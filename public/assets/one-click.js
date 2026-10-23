@@ -1,14 +1,12 @@
-import { Client, handle_file } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js";
-
 const DB_NAME = "salah-web-local-media-v1";
 const STORE = "assets";
 const VOICE_KEY = "voice-profile";
 const VOICE_SPACE = "mohammedaly22/VoiceTut-TTS";
-const IMAGE_SPACE = "mrfakename/Z-Image-Turbo";
+const IMAGE_SPACE = "akhaliq/Z-Image-Turbo";
 const VIDEO_SPACE = "Wan-AI/Wan2.2-S2V";
 const ORIGIN = {
   [VOICE_SPACE]: "https://mohammedaly22-voicetut-tts.hf.space",
-  [IMAGE_SPACE]: "https://mrfakename-z-image-turbo.hf.space",
+  [IMAGE_SPACE]: "https://akhaliq-z-image-turbo.hf.space",
   [VIDEO_SPACE]: "https://wan-ai-wan2-2-s2v.hf.space"
 };
 const $ = (id) => document.getElementById(id);
@@ -19,6 +17,7 @@ let imageClientPromise = null;
 let videoClientPromise = null;
 let ffmpegInstance = null;
 const clips = [];
+let gradioModulePromise = null;
 const SESSION_STORAGE_KEY = "salah-web-story-history-v2";
 const ACTIVE_SESSION_KEY = "salah-web-active-story-v2";
 let storySessions = [];
@@ -190,7 +189,7 @@ async function synthesizeVoice(scene, speed, steps) {
   let args;
   if (voiceProfile && voiceProfile.blob) {
     const wav = new File([voiceProfile.blob], "salah-voice-reference.wav", { type: "audio/wav" });
-    args = [scene.narration, "arz", "clone", "", handle_file(wav), voiceProfile.transcript || "", steps, 2.5, speed, true];
+    args = [scene.narration, "arz", "clone", "", await gradioFile(wav), voiceProfile.transcript || "", steps, 2.5, speed, true];
   } else {
     args = [scene.narration, "arz", "preset", "Ahmed", null, "", steps, 2.5, speed, true];
   }
@@ -211,7 +210,7 @@ async function generateImage(scene, aspect) {
 async function generateVideo(scene, imageUrl, audioUrl, quality) {
   setStatus("المشهد " + scene.id + ": تحويل الصورة إلى فيديو مع الصوت…", "يُرسل إطار المشهد والصوت إلى نموذج Wan 2.2 S2V.");
   const client = await getVideoClient();
-  const result = await client.predict("/predict", [handle_file(imageUrl), handle_file(audioUrl), quality]);
+  const result = await client.predict("/predict", [await gradioFile(imageUrl), await gradioFile(audioUrl), quality]);
   const videoUrl = findUrl(result && result.data, VIDEO_SPACE);
   if (!videoUrl) throw new Error("لم يُرجع نموذج الفيديو رابط فيديو. قد تكون خدمته غير متاحة.");
   return videoUrl;
@@ -770,7 +769,7 @@ async function synthesizeVoiceV2(scene, speed, steps) {
   let args;
   if (voiceProfile && voiceProfile.blob) {
     const wav = new File([voiceProfile.blob], "salah-voice-reference.wav", { type: "audio/wav" });
-    args = [scene.narration, "arz", "clone", "", handle_file(wav), voiceProfile.transcript || "", steps, 2.5, speed, true];
+    args = [scene.narration, "arz", "clone", "", await gradioFile(wav), voiceProfile.transcript || "", steps, 2.5, speed, true];
   } else {
     args = [scene.narration, "arz", "preset", "Ahmed", null, "", steps, 2.5, speed, true];
   }
@@ -789,7 +788,7 @@ async function generateImageV2(scene, aspect) {
 }
 async function generateVideoV2(scene, imageUrl, audioUrl, quality) {
   const client = await withModelTimeout(getVideoClient(), 90000, "الاتصال بخدمة الفيديو");
-  const result = await withModelTimeout(client.predict("/predict", [handle_file(imageUrl), handle_file(audioUrl), quality]), 300000, "توليد الفيديو");
+  const result = await withModelTimeout(client.predict("/predict", [await gradioFile(imageUrl), await gradioFile(audioUrl), quality]), 300000, "توليد الفيديو");
   const videoUrl = findUrl(result && result.data, VIDEO_SPACE);
   if (!videoUrl) throw new Error("لم يُرجع نموذج الفيديو رابط فيديو. قد تكون خدمته غير متاحة أو تغيّر مخطط واجهته.");
   return videoUrl;
@@ -1001,7 +1000,34 @@ async function initV2() {
   setBusy(false);
 }
 
+
+async function loadGradioClientModule() {
+  if (!gradioModulePromise) {
+    gradioModulePromise = import("https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js");
+  }
+  return await gradioModulePromise;
+}
+async function gradioFile(fileOrUrl) {
+  const library = await loadGradioClientModule();
+  return library.handle_file(fileOrUrl);
+}
+function getVoiceClientV2() {
+  if (!voiceClientPromise) voiceClientPromise = loadGradioClientModule().then(function(lib) { return lib.Client.connect(VOICE_SPACE); });
+  return voiceClientPromise;
+}
+function getImageClientV2() {
+  if (!imageClientPromise) imageClientPromise = loadGradioClientModule().then(function(lib) { return lib.Client.connect(IMAGE_SPACE); });
+  return imageClientPromise;
+}
+function getVideoClientV2() {
+  if (!videoClientPromise) videoClientPromise = loadGradioClientModule().then(function(lib) { return lib.Client.connect(VIDEO_SPACE); });
+  return videoClientPromise;
+}
+
 /* Activate the revised implementations only after every helper is defined. */
+getVoiceClient = getVoiceClientV2;
+getImageClient = getImageClientV2;
+getVideoClient = getVideoClientV2;
 setStatus = setStatusV2;
 setProgress = setProgressV2;
 setBusy = setBusyV2;
