@@ -18,6 +18,7 @@ from typing import Any, Literal
 import httpx
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -86,7 +87,7 @@ def row_to_job(row: sqlite3.Row) -> dict[str, Any]:
         "error": row["error"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
-        "final_url": f"/files/{row['final_file']}" if row["final_file"] else None,
+        "final_url": f"/api/files/{row['final_file']}" if row["final_file"] else None,
     }
 
 
@@ -448,14 +449,14 @@ async def run_job(job_id: str, resume: bool = False) -> None:
                 raw_path = outdir / f"scene-{index + 1:03d}-raw.mp4"
                 if resume and final_path.exists() and final_path.stat().st_size > 1000:
                     scene["status"] = "completed"
-                    scene["video_url"] = f"/files/{job_id}/{final_path.name}"
+                    scene["video_url"] = f"/api/files/{job_id}/{final_path.name}"
                     continue
                 scene["status"] = "voice"
                 scene["progress"] = 0
                 save_scenes(job_id, scenes)
                 update_job(job_id, stage=f"scene-{index + 1}-voice", progress=round(100 * index / total), scenes_json=scenes)
                 await create_voice(scene["text"], req["language"], req["voice_provider"], audio_path)
-                scene["audio_url"] = f"/files/{job_id}/{audio_path.name}"
+                scene["audio_url"] = f"/api/files/{job_id}/{audio_path.name}"
                 scene["status"] = "queued_video"
                 save_scenes(job_id, scenes)
                 update_job(job_id, stage=f"scene-{index + 1}-video", progress=round(100 * (index + 0.15) / total), scenes_json=scenes)
@@ -469,14 +470,14 @@ async def run_job(job_id: str, resume: bool = False) -> None:
                 history = await wait_for_comfy(prompt_id)
                 ref = collect_video_ref(history)
                 await download_comfy_file(ref, raw_path)
-                scene["raw_video_url"] = f"/files/{job_id}/{raw_path.name}"
+                scene["raw_video_url"] = f"/api/files/{job_id}/{raw_path.name}"
                 scene["status"] = "muxing_audio"
                 save_scenes(job_id, scenes)
                 update_job(job_id, stage=f"scene-{index + 1}-muxing", progress=round(100 * (index + 0.85) / total), scenes_json=scenes)
                 await mux_video(raw_path, audio_path, final_path)
                 scene["status"] = "completed"
                 scene["progress"] = 100
-                scene["video_url"] = f"/files/{job_id}/{final_path.name}"
+                scene["video_url"] = f"/api/files/{job_id}/{final_path.name}"
                 save_scenes(job_id, scenes)
                 update_job(job_id, stage=f"scene-{index + 1}-done", progress=round(100 * (index + 1) / total), scenes_json=scenes)
             # Concatenate the successful scene files in order.
@@ -515,7 +516,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Salah Cloud Engine", version="0.1.0", lifespan=lifespan)
-app.mount("/files", StaticFiles(directory=str(OUTPUTS)), name="files")
+cors_origins = [item.strip() for item in os.getenv("CORS_ORIGINS", "https://salah-aser.github.io,http://localhost:8000,http://127.0.0.1:8000").split(",") if item.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 
 @app.get("/", response_class=HTMLResponse)
