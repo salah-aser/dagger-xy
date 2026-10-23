@@ -1168,29 +1168,8 @@ function buildScenePlanV3(text, desiredMinutes) {
   });
 }
 function saveHFTokenV3() {
-  const field = $("hfTokenInput");
-  const val = String(field.value || "").trim();
-  const status = $("hfTokenStatus");
-  try {
-    if (val) {
-      if (!/^hf_[A-Za-z0-9]+$/.test(val)) {
-        status.textContent = "شكل التوكن غير صحيح؛ يفترض أن يبدأ بـ hf_. لم يتم حفظ شيء.";
-        return;
-      }
-      localStorage.setItem(HF_TOKEN_KEY_V3, val);
-      field.value = "";
-      status.textContent = "تم حفظ التوكن على هذا الجهاز. لن يُرفع إلى GitHub؛ سيُستخدم عند الاتصال بخدمات Hugging Face فقط.";
-      voiceClientPromise = null; imageClientPromise = null; videoClientPromise = null;
-      setStatus("تم حفظ إعداد الاتصال", "أعد المحاولة الآن. المصادقة قد تزيد الحصة المتاحة، لكن لا تزيل الحدود اليومية بالكامل.", "success");
-    } else {
-      const existing = localStorage.getItem(HF_TOKEN_KEY_V3);
-      status.textContent = existing
-        ? "يوجد توكن محفوظ بالفعل على هذا الجهاز. اكتب توكن جديدًا ثم احفظ لاستبداله، أو اضغط «مسح التوكن»."
-        : "لم يتم إدخال توكن؛ سيجرب الموقع الحصة المتاحة دون مصادقة.";
-    }
-  } catch (e) {
-    status.textContent = "تعذر حفظ التوكن محليًا في هذا المتصفح. " + String(e.message || e);
-  }
+  // No personal token is persisted or sent to public third-party Spaces.
+  return verifyOnlyV5();
 }
 function clearHFTokenV3() {
   try { localStorage.removeItem(HF_TOKEN_KEY_V3); } catch (_) {}
