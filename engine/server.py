@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
-DATA = Path(os.getenv("SALAHDATA", "/data"))
+DATA = Path(os.getenv("SALAHDATA", str(ROOT / "data")))
 OUTPUTS = DATA / "outputs"
 DB_PATH = DATA / "salah.db"
 STATIC = ROOT / "static"
@@ -266,7 +266,8 @@ def graph_to_api(graph: dict[str, Any], info: dict[str, Any]) -> dict[str, Any]:
             if widget_idx < len(widgets):
                 api_inputs[name] = widgets[widget_idx]
                 widget_idx += 1
-        title = node.get("title") or node.get("properties", {}).get("Node name for S&R") or class_type
+        properties = node.get("properties") or {}
+        title = node.get("title") or properties.get("Node name for S&R") or class_type
         result[str(node["id"])] = {"class_type": class_type, "inputs": api_inputs, "_meta": {"title": str(title)}}
     if not result:
         raise ValueError("لم يتم العثور على عقد ComfyUI قابلة للتنفيذ في سير العمل.")
