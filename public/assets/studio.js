@@ -61,16 +61,28 @@ async function readMediaBlob(key) {
 }
 async function restoreClipAudioUrls(clips) {
   await Promise.all((clips || []).map(async function(clip) {
-    if (!clip.audioKey) return;
-    try {
-      const blob = await readMediaBlob(clip.audioKey);
-      if (blob && activeClips.indexOf(clip) >= 0) {
-        if (clip.audioUrl && clip.audioUrl.startsWith("blob:")) URL.revokeObjectURL(clip.audioUrl);
-        clip.audioUrl = URL.createObjectURL(blob);
-        localAudioUrls.add(clip.audioUrl);
-        drawClip(clip);
-      }
-    } catch (_) {}
+    if (activeClips.indexOf(clip) < 0) return;
+    if (clip.audioKey && (!clip.audioUrl || clip.audioUrl.startsWith("blob:"))) {
+      try {
+        const blob = await readMediaBlob(clip.audioKey);
+        if (blob && activeClips.indexOf(clip) >= 0) {
+          if (clip.audioUrl && clip.audioUrl.startsWith("blob:")) URL.revokeObjectURL(clip.audioUrl);
+          clip.audioUrl = URL.createObjectURL(blob);
+          localAudioUrls.add(clip.audioUrl);
+        }
+      } catch (_) {}
+    }
+    if (clip.videoKey && (!clip.videoUrl || clip.videoUrl.startsWith("blob:"))) {
+      try {
+        const blob = await readMediaBlob(clip.videoKey);
+        if (blob && activeClips.indexOf(clip) >= 0) {
+          if (clip.videoUrl && clip.videoUrl.startsWith("blob:")) URL.revokeObjectURL(clip.videoUrl);
+          clip.videoUrl = URL.createObjectURL(blob);
+          localAudioUrls.add(clip.videoUrl);
+        }
+      } catch (_) {}
+    }
+    if (activeClips.indexOf(clip) >= 0) drawClip(clip);
   }));
 }
 async function loadLocalFushaTTS() {
