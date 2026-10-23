@@ -5,8 +5,8 @@ services:
     restart: unless-stopped
     command: ["python3","main.py","--listen","0.0.0.0","--port","8188"]
     volumes:
-      - comfy_models:/opt/ComfyUI/models
-      - comfy_output:/opt/ComfyUI/output
+      - ./models:/opt/ComfyUI/models
+      - ./outputs:/opt/ComfyUI/output
     expose:
       - "8188"
     gpus: all
@@ -28,6 +28,7 @@ services:
       API_TOKEN: ${API_TOKEN:?Set API_TOKEN in engine/.env before starting}
       TTS_PROVIDER: local
       COMFY_TIMEOUT_SECONDS: 1800
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://salah-aser.github.io,http://localhost:8000,http://127.0.0.1:8000}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -36,7 +37,23 @@ services:
       comfyui:
         condition: service_healthy
 
+  caddy:
+    image: caddy:2
+    profiles: ["https"]
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in engine/.env to enable HTTPS}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - salah-api
+
 volumes:
-  comfy_models:
-  comfy_output:
   salah_data:
+  caddy_data:
+  caddy_config:
