@@ -19,6 +19,13 @@ let imageClientPromise = null;
 let videoClientPromise = null;
 let ffmpegInstance = null;
 const clips = [];
+const SESSION_STORAGE_KEY = "salah-web-story-history-v2";
+const ACTIVE_SESSION_KEY = "salah-web-active-story-v2";
+let storySessions = [];
+let activeSessionId = null;
+let runScenes = [];
+const sceneCardNodes = new Map();
+let finalObjectURL = null;
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -414,4 +421,585 @@ async function init() {
   updateEstimate();
 }
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+else init();
+
+
+/* One story = one independent workspace, including its own character description and settings. */
+function activeStorySession() {
+  return storySessions.find(function(s) { return s.id === activeSessionId; }) || null;
+}
+function readStorySettings() {
+  return {
+    durationMinutes: $("durationMinutes").value || "2",
+    aspectRatio: $("aspectRatio").value || "9:16",
+    videoQuality: $("videoQuality").value || "480P",
+    stylePreset: $("stylePreset").value || "cinematic",
+    voiceSpeed: $("voiceSpeed").value || "0.92",
+    voiceSteps: $("voiceSteps").value || "32",
+    arabicCharacters: $("arabicCharacters").checked,
+    historicClothing: $("historicClothing").checked,
+    religiousFaces: $("religiousFaces").checked
+  };
+}
+function applyStorySettings(settings) {
+  settings = settings || {};
+  ["durationMinutes","aspectRatio","videoQuality","stylePreset","voiceSpeed","voiceSteps"].forEach(function(id) {
+    if (settings[id] !== undefined && $(id)) $(id).value = settings[id];
+  });
+  ["arabicCharacters","historicClothing","religiousFaces"].forEach(function(id) {
+    if (settings[id] !== undefined && $(id)) $(id).checked = !!settings[id];
+  });
+  updateEstimate();
+}
+function sessionTitleFromScript(script) {
+  const line = String(script || "").split(/\r?\n/).map(function(x) { return x.trim(); }).find(Boolean) || "";
+  if (!line) return "قصة جديدة";
+  return line.length > 34 ? line.slice(0, 34) + "…" : line;
+}
+function persistSessions() {
+  try {
+    storySessions.sort(function(a,b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+    storySessions = storySessions.slice(0, 25);
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(storySessions));
+    if (activeSessionId) localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId);
+  } catch (err) {
+    try {
+      storySessions.sort(function(a,b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+      storySessions = storySessions.slice(0, 8);
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(storySessions));
+      if (activeSessionId) localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId);
+    } catch (_) {}
+  }
+}
+function saveCurrentStoryToHistory(render) {
+  const s = activeStorySession();
+  if (!s) return;
+  const oldTitle = s.title;
+  s.script = $("storyScript").value || "";
+  s.characterDescription = $("characterDescription").value || "";
+  s.settings = readStorySettings();
+  s.title = sessionTitleFromScript(s.script);
+  s.updatedAt = Date.now();
+  if (!s.status) s.status = s.script.trim() ? "draft" : "new";
+  persistSessions();
+  if (render || oldTitle !== s.title) renderStoryHistory();
+}
+function statusName(status) {
+  return ({
+    new: "قصة جديدة",
+    draft: "مسودة",
+    running: "قيد التنفيذ",
+    partial: "نتائج جزئية",
+    completed: "مكتملة",
+    failed: "توقفت"
+  })[status] || "مسودة";
+}
+function renderStoryHistory() {
+  const root = $("storyHistory");
+  if (!root) return;
+  root.replaceChildren();
+  if (!storySessions.length) {
+    const empty = document.createElement("p");
+    empty.className = "history-empty";
+    empty.textContent = "قصصك الجديدة والقديمة ستظهر هنا.";
+    root.appendChild(empty);
+    return;
+  }
+  storySessions.slice().sort(function(a,b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }).forEach(function(s) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "story-history-item" + (s.id === activeSessionId ? " active" : "");
+    button.disabled = isBusy;
+    button.setAttribute("aria-current", s.id === activeSessionId ? "page" : "false");
+    const title = document.createElement("span");
+    title.className = "history-title";
+    title.textContent = s.title || "قصة جديدة";
+    const meta = document.createElement("span");
+    meta.className = "history-meta";
+    const date = s.updatedAt ? new Date(s.updatedAt).toLocaleDateString("ar-EG", { month: "short", day: "numeric" }) : "";
+    const pct = Number(s.progress || 0);
+    meta.textContent = statusName(s.status) + (s.status === "running" || s.status === "partial" ? " · " + pct + "%" : "") + (date ? " · " + date : "");
+    button.append(title, meta);
+    button.addEventListener("click", function() { switchStorySession(s.id); });
+    root.appendChild(button);
+  });
+}
+function createStorySession(copySettings) {
+  const session = {
+    id: "story-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,8),
+    title: "قصة جديدة",
+    script: "",
+    characterDescription: "",
+    settings: copySettings || {
+      durationMinutes: "2", aspectRatio: "9:16", videoQuality: "480P",
+      stylePreset: "cinematic", voiceSpeed: "0.92", voiceSteps: "32",
+      arabicCharacters: true, historicClothing: true, religiousFaces: true
+    },
+    status: "new", progress: 0, currentScene: 0, currentStage: "",
+    sceneSegments: [], clips: [], lastTitle: "", lastDetail: "",
+    createdAt: Date.now(), updatedAt: Date.now()
+  };
+  storySessions.unshift(session);
+  activeSessionId = session.id;
+  persistSessions();
+  return session;
+}
+function clearStoryResultView() {
+  $("clipResults").replaceChildren();
+  if (finalObjectURL) { URL.revokeObjectURL(finalObjectURL); finalObjectURL = null; }
+  $("finalArea").classList.add("hidden");
+  $("finalVideo").pause();
+  $("finalVideo").removeAttribute("src");
+  $("finalVideo").load();
+  $("finalVideo").classList.add("hidden");
+  $("downloadFinalVideo").removeAttribute("href");
+  $("downloadFinalVideo").classList.add("hidden");
+  $("finalFileInfo").textContent = "";
+  sceneCardNodes.clear();
+  clips.length = 0;
+  runScenes = [];
+}
+function newStorySession() {
+  if (isBusy) return;
+  saveCurrentStoryToHistory(false);
+  const settings = readStorySettings();
+  const session = createStorySession(settings);
+  $("storyScript").value = "";
+  $("characterDescription").value = "";
+  applyStorySettings(session.settings);
+  clearStoryResultView();
+  $("statusBox").classList.add("hidden");
+  renderStoryHistory();
+  $("storyScript").focus();
+  setProgress(0, 100, "قصّة جديدة — لم يبدأ الإنتاج");
+}
+function applyStorySessionToPage(session) {
+  $("storyScript").value = session.script || "";
+  $("characterDescription").value = session.characterDescription || "";
+  applyStorySettings(session.settings);
+  clearStoryResultView();
+  const savedClips = Array.isArray(session.clips) ? session.clips : [];
+  savedClips.slice().sort(function(a,b) { return a.id - b.id; }).forEach(function(c) {
+    clips.push(c);
+    drawSceneCard(c);
+  });
+  if (session.progress) setProgress(session.progress, 100, "آخر تقدم محفوظ: " + session.progress + "%");
+  if (session.lastTitle && session.lastDetail) {
+    $("statusBox").classList.remove("hidden");
+    $("statusTitle").textContent = session.lastTitle;
+    $("statusDetail").textContent = session.lastDetail + (session.status === "partial" ? "\nهذه نتائج محفوظة من جلسة سابقة؛ قد تنتهي صلاحية روابط بعض النماذج." : "");
+    $("statusTitle").classList.toggle("error", session.status === "failed" || session.status === "partial");
+    $("statusTitle").classList.toggle("success", session.status === "completed");
+  } else {
+    $("statusBox").classList.add("hidden");
+  }
+  dbGet("final-video:" + session.id).then(function(blob) {
+    if (activeSessionId === session.id && blob instanceof Blob && blob.size) showFinalVideo(blob, session.id);
+  }).catch(function() {});
+}
+function switchStorySession(id) {
+  if (isBusy || id === activeSessionId) return;
+  saveCurrentStoryToHistory(false);
+  const session = storySessions.find(function(s) { return s.id === id; });
+  if (!session) return;
+  activeSessionId = id;
+  if (session.status === "running") {
+    session.status = "partial";
+    session.lastTitle = "توقفت الجلسة السابقة أثناء الإنتاج";
+    session.lastDetail = "تم حفظ النص والشخصيات والمراحل والنتائج التي اكتملت. لا يمكن للمتصفح إبقاء طلب نموذج خارجي قيد التشغيل بعد إغلاق الصفحة؛ أعد إنشاء الفيديو لهذه القصة لمتابعة الإنتاج.";
+    session.updatedAt = Date.now();
+  }
+  persistSessions();
+  applyStorySessionToPage(session);
+  renderStoryHistory();
+}
+function setStatus(title, detail, kind) {
+  $("statusBox").classList.remove("hidden");
+  $("statusTitle").textContent = title;
+  $("statusDetail").textContent = detail || "";
+  $("statusTitle").classList.toggle("error", kind === "error");
+  $("statusTitle").classList.toggle("success", kind === "success");
+  const s = activeStorySession();
+  if (s) {
+    s.lastTitle = title;
+    s.lastDetail = detail || "";
+    if (kind === "error") s.status = (s.clips || []).some(function(c) { return !!c.videoUrl; }) ? "partial" : "failed";
+    else if (kind === "success" && /جاهز|اكتمل|اكتملت/i.test(title)) s.status = "completed";
+    s.updatedAt = Date.now();
+    persistSessions();
+  }
+  renderStoryHistory();
+}
+function setProgress(value, max, label) {
+  const denominator = Math.max(1, Number(max) || 1);
+  const v = Math.max(0, Math.min(Number(value) || 0, denominator));
+  $("progressBar").max = denominator;
+  $("progressBar").value = v;
+  $("progressLabel").textContent = label || "";
+  const s = activeStorySession();
+  if (s && denominator === 100) {
+    s.progress = Math.round(v);
+    s.updatedAt = Date.now();
+    persistSessions();
+  }
+}
+function setBusy(value) {
+  isBusy = value;
+  if ($("generateFullVideo")) $("generateFullVideo").disabled = value;
+  if ($("saveVoiceSample")) $("saveVoiceSample").disabled = value;
+  if ($("newStoryButton")) $("newStoryButton").disabled = value;
+  if ($("generateFullVideo")) $("generateFullVideo").textContent = value ? "جاري تنفيذ الفيديو كاملًا…" : "أنشئ الفيديو كاملًا";
+  renderStoryHistory();
+}
+function renderClipLinks(container, url, label) {
+  if (!url) return;
+  const a = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noopener";
+  a.textContent = label; container.appendChild(a);
+}
+function drawSceneCard(clip) {
+  let card = sceneCardNodes.get(clip.id);
+  if (!card) {
+    card = document.createElement("article");
+    card.className = "clip-card";
+    card.id = "scene-output-" + clip.id;
+    sceneCardNodes.set(clip.id, card);
+    const ahead = Array.from($("clipResults").children).find(function(el) {
+      const otherId = Number((el.id || "").replace("scene-output-",""));
+      return otherId > clip.id;
+    });
+    if (ahead) $("clipResults").insertBefore(card, ahead); else $("clipResults").appendChild(card);
+  }
+  card.replaceChildren();
+  const title = document.createElement("h3");
+  title.textContent = "المشهد " + clip.id + " · " + (clip.statusText || (clip.videoUrl ? "اكتمل الفيديو" : "قيد التجهيز"));
+  card.appendChild(title);
+  if (clip.narration) {
+    const text = document.createElement("p");
+    text.className = "clip-narration";
+    text.textContent = clip.narration;
+    card.appendChild(text);
+  }
+  if (clip.videoUrl) {
+    const player = document.createElement("video");
+    player.controls = true; player.playsInline = true; player.preload = "metadata"; player.src = clip.videoUrl;
+    card.appendChild(player);
+    const links = document.createElement("div"); links.className = "clip-links";
+    renderClipLinks(links, clip.videoUrl, "فتح / تنزيل المقطع");
+    card.appendChild(links);
+  } else if (clip.imageUrl) {
+    const img = document.createElement("img");
+    img.src = clip.imageUrl; img.alt = "صورة المشهد " + clip.id;
+    img.className = "clip-image";
+    card.appendChild(img);
+  }
+  if (clip.audioUrl) {
+    const alabel = document.createElement("p");
+    alabel.className = "clip-subheading";
+    alabel.textContent = clip.videoUrl ? "الصوت المركّب مع الفيديو:" : "الصوت اكتمل — الفيديو قيد التجهيز:";
+    const audio = document.createElement("audio");
+    audio.controls = true; audio.preload = "none"; audio.src = clip.audioUrl; audio.className = "clip-audio";
+    card.append(alabel, audio);
+    const links = document.createElement("div"); links.className = "clip-links";
+    renderClipLinks(links, clip.audioUrl, "فتح / تنزيل الصوت");
+    if (clip.imageUrl) renderClipLinks(links, clip.imageUrl, "فتح الصورة");
+    if (links.childNodes.length) card.appendChild(links);
+  }
+  if (clip.errorText) {
+    const error = document.createElement("p");
+    error.className = "clip-error";
+    error.textContent = clip.errorText;
+    card.appendChild(error);
+  }
+}
+function upsertSceneClip(scene, patch) {
+  let clip = clips.find(function(c) { return c.id === scene.id; });
+  if (!clip) {
+    clip = { id: scene.id, narration: scene.narration || scene.story || "", audioUrl: null, imageUrl: null, videoUrl: null, statusText: "في انتظار البدء" };
+    clips.push(clip);
+  }
+  Object.assign(clip, patch || {});
+  drawSceneCard(clip);
+  const s = activeStorySession();
+  if (s) {
+    s.clips = clips.map(function(c) {
+      return { id:c.id, narration:c.narration, audioUrl:c.audioUrl || null, imageUrl:c.imageUrl || null,
+        videoUrl:c.videoUrl || null, statusText:c.statusText || "", errorText:c.errorText || null };
+    });
+    s.updatedAt = Date.now();
+    persistSessions();
+  }
+  return clip;
+}
+function updateStageProgress(scene, stageIndex, state, detail, payload) {
+  const labels = ["الصوت", "الصورة", "الفيديو"];
+  const label = labels[stageIndex];
+  const total = Math.max(1, runScenes.length * 3);
+  const thisSceneCompleted = stageIndex + (state === "done" ? 1 : 0);
+  const completedStages = (scene.id - 1) * 3 + thisSceneCompleted;
+  const overall = Math.floor(90 * completedStages / total);
+  const local = Math.round(100 * thisSceneCompleted / 3);
+  const isWorking = state === "working";
+  const text = isWorking ? "جاري توليد " + label + "…" : "اكتمل " + label + " ✓";
+  const clipText = payload && payload.statusText ? payload.statusText : (isWorking ? "قيد التنفيذ: " + label : (stageIndex === 2 ? "الفيديو جاهز للتنزيل" : "اكتمل " + label + " — الانتقال تلقائيًا للمرحلة التالية"));
+  upsertSceneClip(scene, Object.assign({statusText:clipText,scenePercent:local,errorText:null}, payload || {}));
+  setProgress(overall, 100, "إجمالي القصة: " + overall + "% · المشهد " + scene.id + "/" + runScenes.length + ": " + local + "% · مراحل مكتملة " + completedStages + "/" + total);
+  const serviceNote = "المؤشر يحسب مراحل التوليد المكتملة فعليًا؛ خدمة النموذج لا تكشف نسبة داخلية أثناء الانتظار.\n";
+  setStatus("المشهد " + scene.id + " من " + runScenes.length + " — " + text,
+    (detail || "") + "\nتقدم هذا المشهد: " + local + "% · تقدم القصة: " + overall + "%\n" + serviceNote);
+  const s = activeStorySession();
+  if (s) {
+    s.status = "running";
+    s.progress = overall;
+    s.currentScene = scene.id;
+    s.currentStage = label + (isWorking ? " (قيد التنفيذ)" : " (اكتمل)");
+    s.sceneSegments = runScenes.map(function(x) { return {id:x.id,narration:x.narration,story:x.story,start:x.start,end:x.end}; });
+    persistSessions();
+  }
+}
+function withModelTimeout(promise, ms, stageName) {
+  let timer;
+  const timeout = new Promise(function(_, reject) {
+    timer = setTimeout(function() {
+      reject(new Error("تجاوزت مرحلة " + stageName + " الحد الانتظاري " + Math.round(ms/1000) + " ثانية من دون رد. تم إيقاف الانتظار في الواجهة بدل تركها عالقة؛ قد تكون خدمة النموذج مزدحمة أو معلّقة."));
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(function() { clearTimeout(timer); });
+}
+async function synthesizeVoice(scene, speed, steps) {
+  const client = await withModelTimeout(getVoiceClient(), 90000, "الاتصال بخدمة الصوت");
+  let args;
+  if (voiceProfile && voiceProfile.blob) {
+    const wav = new File([voiceProfile.blob], "salah-voice-reference.wav", { type: "audio/wav" });
+    args = [scene.narration, "arz", "clone", "", handle_file(wav), voiceProfile.transcript || "", steps, 2.5, speed, true];
+  } else {
+    args = [scene.narration, "arz", "preset", "Ahmed", null, "", steps, 2.5, speed, true];
+  }
+  const result = await withModelTimeout(client.predict("/synthesize", args), 180000, "توليد الصوت");
+  const audioUrl = findUrl(result && result.data && result.data[0], VOICE_SPACE);
+  if (!audioUrl) throw new Error("عاد نموذج الصوت من دون رابط ملف صوتي يمكن تشغيله.");
+  return audioUrl;
+}
+async function generateImage(scene, aspect) {
+  const client = await withModelTimeout(getImageClient(), 90000, "الاتصال بخدمة الصور");
+  const size = imageSize(aspect);
+  const result = await withModelTimeout(client.predict("/generate_image", [scene.visual, size.height, size.width, 9, 42 + scene.id, true]), 240000, "توليد الصورة");
+  const imageUrl = findUrl(result && result.data && result.data[0], IMAGE_SPACE);
+  if (!imageUrl) throw new Error("عاد نموذج الصور من دون صورة قابلة للاستخدام. تحقق من أن واجهة خدمة الصور العامة متاحة.");
+  return imageUrl;
+}
+async function generateVideo(scene, imageUrl, audioUrl, quality) {
+  const client = await withModelTimeout(getVideoClient(), 90000, "الاتصال بخدمة الفيديو");
+  const result = await withModelTimeout(client.predict("/predict", [handle_file(imageUrl), handle_file(audioUrl), quality]), 300000, "توليد الفيديو");
+  const videoUrl = findUrl(result && result.data, VIDEO_SPACE);
+  if (!videoUrl) throw new Error("لم يُرجع نموذج الفيديو رابط فيديو. قد تكون خدمته غير متاحة أو تغيّر مخطط واجهته.");
+  return videoUrl;
+}
+function showFinalVideo(blob, sessionId) {
+  if (finalObjectURL) URL.revokeObjectURL(finalObjectURL);
+  finalObjectURL = URL.createObjectURL(blob);
+  $("finalVideo").src = finalObjectURL;
+  $("finalVideo").classList.remove("hidden");
+  const link = $("downloadFinalVideo");
+  link.href = finalObjectURL;
+  link.download = "Salah-Web-Full-Video.mp4";
+  link.classList.remove("hidden");
+  $("finalFileInfo").textContent = "ملف MP4 واحد · الحجم " + (blob.size / 1048576).toFixed(1) + " ميجابايت. اضغط تنزيل للاحتفاظ به.";
+  $("finalArea").classList.remove("hidden");
+}
+async function mergeClips(clipsToMerge, aspect, quality) {
+  setStatus("اكتملت مشاهد القصة — تجهيز الدمج النهائي", "تم إنشاء المقاطع الفردية. الآن يجري تنزيلها وتركيب الصوت وتوحيد مقاس الفيديو داخل المتصفح.");
+  setProgress(90,100,"المشاهد: 100% · تجهيز ملف واحد: 0%");
+  const ffmpeg = await loadFFmpeg();
+  const dims = aspect === "16:9"
+    ? (quality === "720P" ? [1280,720] : [854,480])
+    : aspect === "1:1"
+      ? (quality === "720P" ? [720,720] : [480,480])
+      : (quality === "720P" ? [720,1280] : [480,854]);
+  const lines = [];
+  for (let i = 0; i < clipsToMerge.length; i++) {
+    const c = clipsToMerge[i];
+    setStatus("تجهيز الملف النهائي — مقطع " + (i + 1) + "/" + clipsToMerge.length, "جارٍ تنزيل فيديو المشهد وصوته وتوحيد الترميز. إذا منع مزود النموذج التنزيل، سيظل المقطع الفردي ظاهرًا بالأعلى.");
+    setProgress(90 + Math.floor(8 * i / Math.max(1, clipsToMerge.length)),100,"تجهيز الفيديو الكامل: " + Math.floor(100 * i / Math.max(1,clipsToMerge.length)) + "%");
+    const videoBlob = await fetchBlob(c.videoUrl, "الفيديو");
+    const audioBlob = await fetchBlob(c.audioUrl, "الصوت");
+    const inV = "input_video_" + i + ".mp4";
+    const inA = "input_audio_" + i + ".wav";
+    const out = "scene_" + i + ".mp4";
+    await ffmpeg.writeFile(inV, new Uint8Array(await videoBlob.arrayBuffer()));
+    await ffmpeg.writeFile(inA, new Uint8Array(await audioBlob.arrayBuffer()));
+    const w = dims[0], h = dims[1];
+    const filter = "[0:v:0]fps=24,scale=" + w + ":" + h + ":force_original_aspect_ratio=decrease,pad=" + w + ":" + h + ":(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,tpad=stop_mode=clone:stop_duration=30[v]";
+    await ffmpeg.exec([
+      "-i", inV, "-i", inA, "-filter_complex", filter, "-map", "[v]", "-map", "1:a:0",
+      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "27", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", out
+    ]);
+    await ffmpeg.deleteFile(inV);
+    await ffmpeg.deleteFile(inA);
+    lines.push("file '" + out + "'");
+    setProgress(90 + Math.floor(8 * (i+1) / Math.max(1, clipsToMerge.length)),100,"تجهيز الفيديو الكامل: " + Math.floor(100 * (i+1) / clipsToMerge.length) + "%");
+  }
+  await ffmpeg.writeFile("concat_list.txt", new TextEncoder().encode(lines.join("\n") + "\n"));
+  setStatus("الدمج الأخير — جمع المقاطع بترتيب القصة", "المقاطع جاهزة. جارٍ إخراج ملف MP4 واحد.");
+  setProgress(99,100,"آخر خطوة: إخراج ملف MP4 واحد");
+  await ffmpeg.exec(["-f","concat","-safe","0","-i","concat_list.txt","-c","copy","-movflags","+faststart","Salah-Web-Full.mp4"]);
+  const output = await ffmpeg.readFile("Salah-Web-Full.mp4");
+  const blob = new Blob([output], {type:"video/mp4"});
+  if (!blob.size) throw new Error("أنشأ الدمج ملفًا فارغًا.");
+  return blob;
+}
+async function runFullWorkflow() {
+  if (isBusy) return;
+  const story = $("storyScript").value.trim();
+  if (!story) { setStatus("اكتب السكريبت أولًا","اكتب القصة كاملة في المربع المخصص."); return; }
+  if (story.length < 20) { setStatus("السكريبت قصير جدًا","أضف بعض التفاصيل حتى يمكن إنشاء مشاهد مناسبة."); return; }
+  if (story.length > 30000) { setStatus("السكريبت أطول من الحد الحالي","الحد الأقصى 30 ألف حرف في القصة الواحدة."); return; }
+  if (!activeStorySession()) createStorySession(readStorySettings());
+  saveCurrentStoryToHistory(false);
+  const session = activeStorySession();
+  if (!session) return;
+  setBusy(true);
+  clearStoryResultView();
+  session.status = "running";
+  session.progress = 0;
+  session.currentScene = 0;
+  session.currentStage = "تهيئة القصة";
+  session.lastTitle = "بدأ إنشاء الفيديو";
+  session.lastDetail = "يقسم الموقع النص ثم يولّد صوت كل مشهد وصورته وفيديوه، ويعرض النتيجة فور اكتمالها.";
+  session.clips = [];
+  const desired = Number($("durationMinutes").value || 2);
+  const scenes = buildScenePlan(story, desired);
+  runScenes = scenes;
+  session.sceneSegments = scenes.map(function(x) { return {id:x.id,narration:x.narration,story:x.story,start:x.start,end:x.end}; });
+  session.updatedAt = Date.now();
+  persistSessions();
+  renderStoryHistory();
+  setProgress(0,100,"0% · 0/" + (scenes.length * 3) + " مراحل توليد مكتملة");
+  setStatus("بدأ الإنتاج التلقائي","تم تقسيم القصة إلى " + scenes.length + " مشهدًا. سينشأ كل مشهد بالترتيب: صوت ← صورة ← فيديو، وسيظهر فور اكتماله. لا توجد خطوة يدوية بين المراحل.");
+  let processingScene = null;
+  let processingStage = 0;
+  try {
+    const aspect = $("aspectRatio").value;
+    const quality = $("videoQuality").value;
+    const speed = Number($("voiceSpeed").value || 0.92);
+    const steps = Number($("voiceSteps").value || 32);
+    const targetSeconds = Math.round(desired * 60);
+    const textSeconds = Math.round(story.split(/\s+/).filter(Boolean).length / 130 * 60);
+    if (Math.abs(textSeconds-targetSeconds) > targetSeconds*0.3) {
+      setStatus("تنبيه: مدة الكلام تختلف عن المدة المختارة",
+        "النص يحتوي كلامًا يكافئ نحو " + (textSeconds/60).toFixed(1) + " دقيقة، بينما المدة المستهدفة " + desired + " دقيقة. سيحافظ الموقع على النص كاملًا؛ لا يمكن ضمان مدة نهائية مطابقة دون حذف النص أو تمديده.");
+    }
+    for (const scene of scenes) {
+      processingScene = scene;
+      updateStageProgress(scene,0,"working","الخطوة 1/3 من هذا المشهد: توليد الصوت. قد تنتظر قليلًا حسب دور النموذج.");
+      processingStage = 0;
+      const audioUrl = await withModelTimeout(synthesizeVoice(scene,speed,steps), 210000, "مرحلة الصوت للمشهد " + scene.id);
+      updateStageProgress(scene,0,"done","اكتمل الصوت؛ سيبدأ توليد صورة هذا المشهد تلقائيًا.",{audioUrl:audioUrl,statusText:"اكتمل الصوت — جاري توليد الصورة"});
+      processingStage = 1;
+      updateStageProgress(scene,1,"working","الخطوة 2/3: إنشاء صورة سينمائية من جزء القصة ووصف الشخصيات.");
+      const imageUrl = await withModelTimeout(generateImage(scene,aspect), 270000, "مرحلة الصورة للمشهد " + scene.id);
+      updateStageProgress(scene,1,"done","اكتملت الصورة؛ سيبدأ تحريكها باستخدام الصوت الناتج.",{audioUrl:audioUrl,imageUrl:imageUrl,statusText:"اكتمل الصوت والصورة — جاري توليد الفيديو"});
+      processingStage = 2;
+      updateStageProgress(scene,2,"working","الخطوة 3/3: تحريك الصورة مع الصوت. مدة الخدمة تتغير حسب الضغط والجودة.");
+      const videoUrl = await withModelTimeout(generateVideo(scene,imageUrl,audioUrl,quality), 330000, "مرحلة الفيديو للمشهد " + scene.id);
+      const result = upsertSceneClip(scene,{audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,statusText:"الفيديو جاهز للتنزيل",errorText:null,scenePercent:100});
+      updateStageProgress(scene,2,"done","اكتمل هذا المشهد وأصبح متاحًا الآن؛ جارٍ الانتقال للمشهد التالي.",{audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,statusText:"اكتمل الفيديو — جاهز"});
+      const sNow = activeStorySession();
+      if (sNow) {
+        sNow.completedScenes = clips.filter(function(c) { return !!c.videoUrl; }).length;
+        sNow.status = "running";
+        persistSessions();
+      }
+      // Deliberately save and render a completed scene before requesting the next scene.
+      drawSceneCard(result);
+    }
+    setStatus("اكتملت جميع المشاهد — بدء تجميع الفيديو","تم إنشاء " + clips.length + " مقطعًا منفصلًا. جارٍ جمعها في ملف MP4 واحد وتركيب الصوت.");
+    const finalBlob = await mergeClips(clips,aspect,quality);
+    try { await dbSet("final-video:" + session.id, finalBlob); } catch (_) {}
+    showFinalVideo(finalBlob,session.id);
+    setProgress(100,100,"100% · اكتملت جميع المشاهد والدمج النهائي");
+    setStatus("الفيديو الكامل جاهز ✓","اكتملت القصة في ملف MP4 واحد مع الصوت. يمكنك تنزيله الآن من قسم النتيجة النهائية.","success");
+    session.status = "completed";
+    session.progress = 100;
+    session.completedAt = Date.now();
+    session.lastTitle = "الفيديو الكامل جاهز ✓";
+    session.lastDetail = "اكتملت جميع المشاهد ودمجها في ملف MP4 واحد.";
+    persistSessions();
+  } catch (err) {
+    const detail = errorText(err);
+    if (processingScene) {
+      const clip = upsertSceneClip(processingScene,{
+        statusText:"توقف عند مرحلة " + ["الصوت","الصورة","الفيديو"][processingStage],
+        errorText:detail
+      });
+    }
+    const s = activeStorySession();
+    if (s) {
+      s.status = clips.some(function(c) { return !!c.videoUrl; }) ? "partial" : "failed";
+      s.progress = Number($("progressBar").value || s.progress || 0);
+      s.lastTitle = s.status === "partial" ? "توقف الإنتاج — توجد مشاهد جاهزة" : "تعذر إكمال أول مشهد";
+      s.lastDetail = "اكتمل " + clips.filter(function(c) { return !!c.videoUrl; }).length + " من " + scenes.length + " مشاهد فيديو. السبب: " + detail + "\nالمقاطع المكتملة محفوظة في نتائج القصة ويمكن فتحها من سجل القصص.";
+      persistSessions();
+    }
+    setStatus("توقف الإنتاج عند المشهد " + (processingScene ? processingScene.id : "?"),
+      "المرحلة: " + (["الصوت","الصورة","الفيديو"][processingStage] || "التحضير") + "\n" +
+      "نجح حتى الآن " + clips.filter(function(c) { return !!c.videoUrl; }).length + " من " + scenes.length + " مشاهد. لم تختفِ النتائج السابقة. \nالسبب: " + detail,"error");
+  } finally {
+    setBusy(false);
+    renderStoryHistory();
+    saveCurrentStoryToHistory(false);
+  }
+}
+async function init() {
+  try {
+    voiceProfile = await dbGet(VOICE_KEY);
+    $("voiceSampleStatus").textContent = voiceProfile && voiceProfile.blob
+      ? "عينة صوت محفوظة بالفعل في هذا المتصفح؛ سيستخدمها الموقع تلقائيًا."
+      : "لا توجد عينة محفوظة؛ سيستخدم الموقع صوتًا عربيًا جاهزًا تلقائيًا.";
+  } catch (_) {
+    $("voiceSampleStatus").textContent = "سيُستخدم صوت عربي جاهز؛ التخزين المحلي غير متاح حاليًا.";
+  }
+  try { storySessions = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || "[]"); } catch (_) { storySessions = []; }
+  if (!Array.isArray(storySessions)) storySessions = [];
+  storySessions = storySessions.filter(function(s) { return s && s.id; });
+  storySessions.forEach(function(s) {
+    if (s.status === "running") {
+      s.status = "partial";
+      s.lastTitle = "توقفت جلسة الإنتاج عند إغلاق الصفحة";
+      s.lastDetail = "حُفظ النص ووصف الشخصيات والنتائج المكتملة. الطلبات الخارجية المعلقة لا تستمر تلقائيًا بعد مغادرة الصفحة.";
+    }
+  });
+  let savedId = "";
+  try { savedId = localStorage.getItem(ACTIVE_SESSION_KEY) || ""; } catch (_) {}
+  if (!storySessions.length) createStorySession(readStorySettings());
+  else if (storySessions.some(function(s) { return s.id === savedId; })) activeSessionId = savedId;
+  else activeSessionId = storySessions.slice().sort(function(a,b) { return (b.updatedAt || 0) - (a.updatedAt || 0); })[0].id;
+  const active = activeStorySession();
+  if (active) applyStorySessionToPage(active);
+  renderStoryHistory();
+
+  $("newStoryButton").addEventListener("click",newStorySession);
+  $("storyScript").addEventListener("input",function() {
+    updateEstimate();
+    const s = activeStorySession();
+    const prior = s ? s.title : "";
+    saveCurrentStoryToHistory(false);
+    if (s && prior !== s.title) renderStoryHistory();
+  });
+  $("characterDescription").addEventListener("input",function(){ saveCurrentStoryToHistory(false); });
+  ["durationMinutes","aspectRatio","videoQuality","stylePreset","voiceSpeed","voiceSteps","arabicCharacters","historicClothing","religiousFaces"].forEach(function(id) {
+    $(id).addEventListener("change",function(){ saveCurrentStoryToHistory(true); });
+  });
+  $("saveVoiceSample").addEventListener("click",saveVoiceReference);
+  $("generateFullVideo").addEventListener("click",runFullWorkflow);
+  if (active && active.lastTitle) {
+    // Existing saved runs and their partial outputs remain visible when revisiting a story.
+  } else {
+    setProgress(0,100,"اختر قصة قديمة من السجل أو أنشئ قصة جديدة.");
+  }
+  updateEstimate();
+  setBusy(false);
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded",init,{once:true});
 else init();
