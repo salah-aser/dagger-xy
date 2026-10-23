@@ -1078,7 +1078,7 @@ function errorTextV3(err) {
   if (/Space metadata could not be loaded/i.test(raw)) {
     return "لم يمكن قراءة واجهة النموذج. تحقق من اتصال الإنترنت، أو من أن خدمة Hugging Face ما زالت متاحة. لن يستمر الموقع في الانتظار بلا نهاية. التفاصيل: " + raw.slice(0, 380);
   }
-  return errorText(err);
+  return raw.slice(0, 900);
 }
 function wordCountV3(text) {
   return String(text || "").trim().split(/\s+/).filter(Boolean).length;
