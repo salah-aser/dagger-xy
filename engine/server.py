@@ -236,8 +236,10 @@ def graph_to_api(
     external_values: dict[str, Any] | None = None,
     external_link_ids: dict[int, str] | None = None,
 ) -> dict[str, Any]:
-    """Convert an API prompt, classic Comfy graph, or Comfy blueprint with embedded subgraphs."""
-    if isinstance(graph, dict) and graph and all(isinstance(v, dict) and "class_type" in v for v in graph.values()):
+    """Convert API JSON, classic ComfyUI graphs, or an embedded ComfyUI blueprint."""
+    if isinstance(graph, dict) and graph and all(
+        isinstance(value, dict) and "class_type" in value for value in graph.values()
+    ):
         return json.loads(json.dumps(graph))
 
     nodes = graph.get("nodes")
@@ -245,6 +247,7 @@ def graph_to_api(
     if not isinstance(nodes, list) or not isinstance(links, list):
         raise ValueError("ملف سير العمل يجب أن يكون ComfyUI API JSON أو رسم ComfyUI عادي.")
 
+    # ComfyUI blueprints store the real workflow inside definitions.subgraphs.
     definitions = graph.get("definitions") or {}
     subgraphs = definitions.get("subgraphs") or []
     subgraph_by_id = {
@@ -255,22 +258,18 @@ def graph_to_api(
         if not isinstance(outer_node, dict):
             continue
         subgraph = subgraph_by_id.get(str(outer_node.get("type")))
-        if subgraph:
-            outer_widgets = list(outer_node.get("widgets_values") or [])
-            values: dict[str, Any] = {}
-            ext_links: dict[int, str] = {}
-            for index, ext in enumerate(subgraph.get("inputs") or []):
-                name = str(ext.get("name", ""))
-                if name and index < len(outer_widgets):
-                    values[name] = outer_widgets[index]
-                for link_id in ext.get("linkIds") or []:
-                    ext_links[int(link_id)] = name
-            # A saved blueprint may have values assigned to the group's inputs rather than widgets.
-            for idx, slot in enumerate(outer_node.get("inputs") or []):
-                name = str(slot.get("name") or slot.get("label") or "")
-                if name and slot.get("link") is None and idx < len(outer_widgets):
-                    values[name] = outer_widgets[idx]
-            return graph_to_api(subgraph, info, values, ext_links)
+        if not subgraph:
+            continue
+        outer_widgets = list(outer_node.get("widgets_values") or [])
+        values: dict[str, Any] = {}
+        external_links: dict[int, str] = {}
+        for index, external_input in enumerate(subgraph.get("inputs") or []):
+            name = str(external_input.get("name") or "")
+            if name and index < len(outer_widgets):
+                values[name] = outer_widgets[index]
+            for link_id in external_input.get("linkIds") or []:
+                external_links[int(link_id)] = name
+        return graph_to_api(subgraph, info, values, external_links)
 
     external_values = external_values or {}
     external_link_ids = external_link_ids or {}
@@ -285,16 +284,20 @@ def graph_to_api(
             link_map[int(link[0])] = (str(link[1]), int(link[2]))
 
     result: dict[str, Any] = {}
+    control_after_seed = {"fixed", "randomize", "increment", "decrement"}
     for node in nodes:
-        if not isinstance(node, dict) or node.get("type") not in info:
+        if not isinstance(node, dict):
             continue
-        class_type = str(node["type"])
-        schema = info[class_type].get("input", {})
-        widgets = list(node.get("widgets_values") or [])
+        class_type = str(node.get("type") or "")
+        if class_type not in info:
+            continue
+
         api_inputs: dict[str, Any] = {}
         connected: set[str] = set()
-        for inp in node.get("inputs", []) or []:
-            name = str(inp.get("name", ""))
+        input_slots = node.get("inputs") or []
+        # Resolve connected links first. Blueprint external links carry their configured values.
+        for inp in input_slots:
+            name = str(inp.get("name") or "")
             link_id = inp.get("link")
             if not name or link_id is None:
                 continue
@@ -303,27 +306,35 @@ def graph_to_api(
             except (TypeError, ValueError):
                 continue
             if link_id in external_link_ids:
-                ext_name = external_link_ids[link_id]
-                if ext_name in external_values:
-                    api_inputs[name] = external_values[ext_name]
+                external_name = external_link_ids[link_id]
+                if external_name in external_values:
+                    api_inputs[name] = external_values[external_name]
                     connected.add(name)
             elif link_id in link_map:
-                src, slot = link_map[link_id]
-                api_inputs[name] = [src, slot]
+                source_id, source_slot = link_map[link_id]
+                api_inputs[name] = [source_id, source_slot]
                 connected.add(name)
 
-        schema_names: list[str] = []
-        for key in ("required", "optional"):
-            values = schema.get(key, {})
-            if isinstance(values, dict):
-                schema_names.extend(values.keys())
-        widget_idx = 0
-        for name in schema_names:
-            if name in connected:
+        # widgets_values follows the UI widget slots. Do not assign values to non-widget
+        # ports such as CreateVideo.audio, and skip UI-only seed controls.
+        widgets = list(node.get("widgets_values") or [])
+        widget_index = 0
+        previous_name = ""
+        for inp in input_slots:
+            widget = inp.get("widget")
+            name = str(inp.get("name") or "")
+            if not name or not isinstance(widget, dict):
                 continue
-            if widget_idx < len(widgets):
-                api_inputs[name] = widgets[widget_idx]
-                widget_idx += 1
+            if previous_name in {"seed", "noise_seed"} and widget_index < len(widgets):
+                if str(widgets[widget_index]).lower() in control_after_seed:
+                    widget_index += 1
+            if widget_index >= len(widgets):
+                break
+            value = widgets[widget_index]
+            widget_index += 1
+            previous_name = name
+            if name not in connected:
+                api_inputs[name] = value
 
         properties = node.get("properties") or {}
         title = node.get("title") or properties.get("Node name for S&R") or class_type
@@ -728,7 +739,7 @@ if __name__ == "__main__":
                 inputs[key] = frames
             elif low == "filename_prefix":
                 inputs[key] = f"salah/{job_id}/scene-{scene_num + 1:03d}"
-    return ensure_video_saver(wf)
+    return wf
 
 
 async def queue_comfy(workflow: dict[str, Any]) -> str:
