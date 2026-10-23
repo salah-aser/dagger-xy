@@ -106,6 +106,8 @@ async function loadLocalFushaTTS() {
         device: "auto",
         cache: true,
         worker: false,
+        modelUrl: "./nabra-model/model_fp16.onnx",
+        voiceUrl: "./nabra-model/af_msa.bin",
         wasmPaths: new URL("./ort/", import.meta.url).href,
         numThreads: 1,
         onProgress: function(progress) {
