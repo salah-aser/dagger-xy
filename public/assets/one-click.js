@@ -658,6 +658,7 @@ function renderClipLinks(container, url, label) {
   a.textContent = label; container.appendChild(a);
 }
 function drawSceneCard(clip) {
+  if (sceneCardNodes.size === 0 && $("clipResults")) $("clipResults").replaceChildren();
   let card = sceneCardNodes.get(clip.id);
   if (!card) {
     card = document.createElement("article");
