@@ -75,26 +75,48 @@ async function restoreClipAudioUrls(clips) {
 }
 async function loadLocalFushaTTS() {
   if (!localNabraPromise) {
-    localNabraPromise = import("https://cdn.jsdelivr.net/npm/nabra-tts@0/+esm").then(async function(module) {
+    localNabraPromise = (async function() {
+      let module = null;
+      let lastImportError = null;
+      const moduleUrls = [
+        "https://cdn.jsdelivr.net/npm/nabra-tts@0.1.0/+esm",
+        "https://esm.sh/nabra-tts@0.1.0?bundle"
+      ];
+      for (const moduleUrl of moduleUrls) {
+        try {
+          status("تحميل مكتبة الصوت العربية", "يجرب الموقع مصدر التحميل " + (moduleUrls.indexOf(moduleUrl)+1) + " من " + moduleUrls.length + ".");
+          module = await import(moduleUrl);
+          if (module && (module.NabraTTS || (module.default && module.default.NabraTTS))) break;
+          module = null;
+        } catch (importError) {
+          lastImportError = importError;
+          module = null;
+        }
+      }
+      if (!module) {
+        throw new Error("تعذر تحميل مكتبة Nabra من مصدري CDN. تأكد أن المتصفح لا يحجب jsDelivr أو esm.sh، ثم حاول مجددًا. التفاصيل: " +
+          String(lastImportError && lastImportError.message || lastImportError || "module unavailable"));
+      }
       const NabraTTS = module.NabraTTS || (module.default && module.default.NabraTTS);
       if (!NabraTTS || typeof NabraTTS.load !== "function") {
-        throw new Error("لم تتوفر مكتبة NabraTTS من CDN.");
+        throw new Error("تم تحميل الحزمة، لكن لم تتوفر دالة NabraTTS.load المتوقعة.");
       }
-      status("تجهيز محرك الصوت العربي المحلي", "يجري تنزيل نموذج Nabra العربي المفتوح المصدر لأول مرة (حوالي 16–30 ميجابايت حسب النسخة). سيُخزّن في ذاكرة المتصفح لتقليل التنزيلات اللاحقة.");
+      status("تجهيز محرك الصوت العربي المحلي", "يجري تنزيل نموذج Nabra العربي المفتوح المصدر لأول مرة (حوالي 16 ميجابايت للنموذج fp16، إضافة إلى ملفات التشغيل). سيُخزّن في ذاكرة المتصفح لتقليل التنزيلات اللاحقة.");
       const tts = await withTimeout(NabraTTS.load({
         dtype: "fp16",
         device: "auto",
         cache: true,
+        worker: false,
         numThreads: 1,
         onProgress: function(progress) {
           if (progress && progress.total) {
             status("تحميل محرك الصوت المحلي " + Math.round(100 * progress.loaded / progress.total) + "%",
-              "تنزيل ملفات نموذج Nabra للفصحى. بعد اكتمال التحميل سيعمل الصوت من جهازك دون حصة ZeroGPU.");
+              "تنزيل ملفات نموذج Nabra للفصحى: " + (progress.file || "ملف النموذج") + ". بعد اكتمال التحميل سيعمل الصوت من جهازك دون حصة ZeroGPU.");
           }
         }
       }), 240000, "تحميل نموذج الصوت العربي المحلي");
       return tts;
-    }).catch(function(err) {
+    })().catch(function(err) {
       localNabraPromise = null;
       throw err;
     });
@@ -611,7 +633,7 @@ function updateClip(scene, patch) {
   if (p) {
     p.clips = activeClips.map(function(x) { return {
       id:x.id,narration:x.narration,stage:x.stage,audioUrl:x.audioUrl||null,imageUrl:x.imageUrl||null,
-      videoUrl:x.videoUrl||null,audioKey:x.audioKey||null,error:x.error||null
+      videoUrl:x.videoUrl||null,audioKey:x.audioKey||null,videoKey:x.videoKey||null,motionMode:x.motionMode||null,error:x.error||null
     };});
     saveProjects();
   }
@@ -768,6 +790,47 @@ async function downloadBlob(url,label) {
   if (!r.ok) throw new Error("تعذّر تنزيل " + label + " (HTTP " + r.status + ").");
   return await r.blob();
 }
+async function createLocalMotion(scene,imageUrl,audioUrl) {
+  status("المشهد " + scene.id + " — إنشاء فيديو بديل محلي",
+    "يستخدم ملف الصورة والصوت المحفوظين لإنشاء MP4 بحركة كاميرا بطيئة. لا ينتج حركة جديدة للشخصيات ولا مزامنة شفاه.");
+  const engine=await withTimeout(loadFfmpeg(),180000,"تحميل محرك تركيب الفيديو المحلي");
+  const imageBlob=await downloadBlob(imageUrl,"صورة المشهد");
+  let audioBlob;
+  if (scene.audioKey) {
+    try { audioBlob=await readMediaBlob(scene.audioKey); } catch (_) {}
+  }
+  if (!audioBlob) audioBlob=await downloadBlob(audioUrl,"صوت المشهد");
+  if (!(imageBlob instanceof Blob) || !imageBlob.size) throw new Error("صورة المشهد غير متاحة للتركيب المحلي.");
+  if (!(audioBlob instanceof Blob) || !audioBlob.size) throw new Error("ملف الصوت غير متاح للتركيب المحلي.");
+  const imageType=(imageBlob.type||"").toLowerCase();
+  const imageExt=imageType.indexOf("png")>=0 ? "png" : imageType.indexOf("webp")>=0 ? "webp" : "jpg";
+  const imageName="local_scene_"+scene.id+"."+imageExt;
+  const audioName="local_audio_"+scene.id+".wav";
+  const outName="local_motion_"+scene.id+".mp4";
+  await engine.writeFile(imageName,new Uint8Array(await imageBlob.arrayBuffer()));
+  await engine.writeFile(audioName,new Uint8Array(await audioBlob.arrayBuffer()));
+  const aspect=$("aspect").value;
+  const w=aspect==="16:9" ? 854 : 480;
+  const h=aspect==="1:1" ? 480 : (aspect==="16:9" ? 480 : 854);
+  const filter="[0:v]scale="+w+":"+h+":force_original_aspect_ratio=increase,crop="+w+":"+h+",zoompan=z='min(zoom+0.0007,1.10)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s="+w+"x"+h+":fps=24,setsar=1,format=yuv420p[v]";
+  await withTimeout(engine.exec([
+    "-loop","1","-framerate","24","-i",imageName,"-i",audioName,
+    "-filter_complex",filter,"-map","[v]","-map","1:a:0",
+    "-c:v","libx264","-preset","ultrafast","-crf","27",
+    "-c:a","aac","-b:a","128k","-shortest","-movflags","+faststart",outName
+  ]),360000,"تركيب الفيديو البديل محليًا");
+  const bytes=await engine.readFile(outName);
+  await engine.deleteFile(imageName).catch(function(){});
+  await engine.deleteFile(audioName).catch(function(){});
+  await engine.deleteFile(outName).catch(function(){});
+  if (!bytes || !bytes.length) throw new Error("لم ينتج محرك FFmpeg ملف الفيديو البديل.");
+  const blob=new Blob([bytes],{type:"video/mp4"});
+  const url=URL.createObjectURL(blob);
+  const key=(activeId||"project")+":scene:"+scene.id+":local-motion-v1";
+  try { await saveMediaBlob(key,blob); scene.videoKey=key; } catch (_) {}
+  localAudioUrls.add(url);
+  return url;
+}
 async function mergeFinal(clips) {
   status("المشاهد اكتملت — جاري دمج الفيديو النهائي","يُجهّز الموقع ملف MP4 واحد. إن منع مزود الخدمة تنزيل المقاطع، ستظل المقاطع الفردية متاحة.");
   const engine = await loadFfmpeg();
@@ -827,7 +890,7 @@ async function createFullVideo() {
   }
   // Preserve completed assets from the last attempt; a quota failure should not force new audio/image calls.
   const previousClips = Array.isArray(p.clips) ? p.clips.map(function(c) {
-    return {id:c.id,narration:c.narration,stage:c.stage,audioUrl:c.audioUrl||null,imageUrl:c.imageUrl||null,videoUrl:c.videoUrl||null,audioKey:c.audioKey||null,error:c.error||null};
+    return {id:c.id,narration:c.narration,stage:c.stage,audioUrl:c.audioUrl||null,imageUrl:c.imageUrl||null,videoUrl:c.videoUrl||null,audioKey:c.audioKey||null,videoKey:c.videoKey||null,motionMode:c.motionMode||null,error:c.error||null};
   }) : [];
   setBusy(true);
   clearResults();
@@ -847,7 +910,7 @@ async function createFullVideo() {
   $("results").replaceChildren();
   cardByScene.clear();
   activeClips.forEach(function(c){drawClip(c);});
-  p.clips=activeClips.map(function(c){return {id:c.id,narration:c.narration,stage:c.stage,audioUrl:c.audioUrl||null,imageUrl:c.imageUrl||null,videoUrl:c.videoUrl||null,audioKey:c.audioKey||null,error:c.error||null};});
+  p.clips=activeClips.map(function(c){return {id:c.id,narration:c.narration,stage:c.stage,audioUrl:c.audioUrl||null,imageUrl:c.imageUrl||null,videoUrl:c.videoUrl||null,audioKey:c.audioKey||null,videoKey:c.videoKey||null,motionMode:c.motionMode||null,error:c.error||null};});
   saveProjects();renderHistory();
   if (!scenes.length) { setBusy(false);status("لم يتم العثور على مشاهد","أدخل نصًا يحتوي على كلام.");return; }
   setProgress(0,"تقسيم القصة إلى " + scenes.length + " مشهدًا");
@@ -903,11 +966,27 @@ async function createFullVideo() {
         scene.videoUrl=videoUrl;
         updatePhaseProgress(scene,2,"done","تمت إعادة استخدام فيديو المشهد المكتمل سابقًا.",{audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,stage:"الفيديو محفوظ"});
       } else {
-        updatePhaseProgress(scene,2,"working","تحريك الصورة ومزامنة حركة الرأس والفم مع الصوت.");
-        videoUrl=await createMotion(scene,imageUrl,audioUrl);
-        scene.videoUrl=videoUrl;scene.stage="اكتمل الفيديو";
-        const c=updateClip(scene,{audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,stage:"جاهز للتنزيل",error:null});
-        updatePhaseProgress(scene,2,"done","اكتمل هذا المشهد وأصبح متاحًا الآن.",{audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,stage:"اكتمل الفيديو"});
+        updatePhaseProgress(scene,2,"working","محاولة توليد فيديو متحرك من الصورة والصوت.");
+        let motionMode = "ai-video";
+        try {
+          videoUrl=await createMotion(scene,imageUrl,audioUrl);
+        } catch (motionError) {
+          const motionMessage=describeError(motionError);
+          status("تعذر توليد الحركة بالذكاء الاصطناعي — محاولة بديل محلي",
+            "الصورة والصوت محفوظان. سيحاول الموقع إنشاء مقطع MP4 بحركة كاميرا بطيئة من الصورة نفسها. هذا بديل إنقاذ ولا ينتج حركة بشرية أو مزامنة شفاه حقيقية. سبب فشل خدمة الفيديو: " + motionMessage);
+          motionMode = "local-still-motion";
+          videoUrl=await createLocalMotion(scene,imageUrl,audioUrl);
+        }
+        scene.videoUrl=videoUrl;scene.stage=motionMode==="ai-video" ? "اكتمل الفيديو بالذكاء الاصطناعي" : "فيديو بديل من الصورة والصوت";
+        const c=updateClip({id:scene.id,narration:scene.narration}, {
+          audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,
+          stage:motionMode==="ai-video" ? "جاهز للتنزيل — فيديو مولّد" : "جاهز للتنزيل — بديل بحركة كاميرا",
+          motionMode:motionMode,error:null,audioKey:audioKey||null
+        });
+        updatePhaseProgress(scene,2,"done",motionMode==="ai-video"
+          ? "اكتمل مشهد الفيديو المتحرك."
+          : "اكتمل بديل محلي من الصورة والصوت. لا توجد حركة بشرية أو مزامنة شفاه في هذا البديل.",
+          {audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,stage:c.stage,motionMode:motionMode,audioKey:audioKey||null});
         drawClip(c);
       }
     }
