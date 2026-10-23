@@ -22,27 +22,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Bundle Nabra TTS locally (no runtime CDN import)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p public/assets/ort
-          mkdir -p public/assets/nabra-model
-          git clone --depth 1 https://github.com/Oddadmix/nabra-tts.git "$RUNNER_TEMP/salah-nabra"
-          npm install --prefix "$RUNNER_TEMP/salah-nabra" --no-package-lock
-          npm run build --prefix "$RUNNER_TEMP/salah-nabra"
-          printf '%s\n' 'export { NabraTTS } from "./dist/index.js";' > "$RUNNER_TEMP/salah-nabra/entry.js"
-          "$RUNNER_TEMP/salah-nabra/node_modules/.bin/esbuild" "$RUNNER_TEMP/salah-nabra/entry.js" --bundle --format=esm --platform=browser --target=es2022 --external:node:* --external:fs --external:path --external:module --external:url --external:worker_threads --external:crypto --outfile=public/assets/nabra-tts.bundle.js
-          cp "$RUNNER_TEMP/salah-nabra/node_modules/onnxruntime-web/dist/"*.wasm public/assets/ort/
-          cp "$RUNNER_TEMP/salah-nabra/node_modules/onnxruntime-web/dist/"*.mjs public/assets/ort/
-          curl -fL --retry 3 --retry-delay 2 "https://huggingface.co/oddadmix/Nabra-7M-Distill-ONNX/resolve/main/onnx/model_fp16.onnx" -o public/assets/nabra-model/model_fp16.onnx
-          curl -fL --retry 3 --retry-delay 2 "https://huggingface.co/oddadmix/Nabra-7M-Distill-ONNX/resolve/main/voices/af_msa.bin" -o public/assets/nabra-model/af_msa.bin
-          cp "$RUNNER_TEMP/salah-nabra/LICENSE" public/assets/NABRA-LICENSE.txt
-          cp "$RUNNER_TEMP/salah-nabra/THIRD_PARTY_NOTICES.md" public/assets/NABRA-THIRD-PARTY-NOTICES.md
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload site
