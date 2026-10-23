@@ -1263,6 +1263,30 @@ async function initV3() {
   setBusy(false);
 }
 
+
+async function testHFConnectionV4() {
+  const button = $("testHFConnection");
+  if (button) button.disabled = true;
+  $("hfTokenStatus").textContent = "جارٍ الاتصال بواجهة نموذج الصوت باستخدام إعداد التوكن المحفوظ…";
+  try {
+    const token = localStorage.getItem(HF_TOKEN_KEY_V3) || "";
+    if (!/^hf_[A-Za-z0-9]+$/.test(token)) {
+      throw new Error("لا يوجد توكن محفوظ بهذا المتصفح. أنشئ توكن Read جديدًا، والصقه في الحقل، ثم اضغط «حفظ التوكن» أولًا.");
+    }
+    voiceClientPromise = null;
+    await withModelTimeout(getVoiceClientV3(), 45000, "الاتصال بواجهة نموذج الصوت");
+    $("hfTokenStatus").textContent = "نجح الاتصال بواجهة نموذج الصوت. هذا يثبت أن البيانات الوصفية أمكن تحميلها، لكنه لا يضمن توفر حصة التوليد؛ جرّب مشهدًا قصيرًا.";
+    setStatus("نجح اختبار الاتصال", "اتصل الموقع بواجهة نموذج الصوت. الآن جرّب توليد مشهد قصير. إذا ظهرت رسالة ZeroGPU limit فهذا يعني أن حصة التوليد ما زالت محدودة.", "success");
+  } catch (err) {
+    voiceClientPromise = null;
+    const detail = errorTextV3(err);
+    $("hfTokenStatus").textContent = "تعذر الاتصال: " + detail;
+    setStatus("فشل اختبار اتصال Hugging Face", detail, "error");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 /* Last-mile overrides used by the published page. */
 getVoiceClient = getVoiceClientV3;
 getImageClient = getImageClientV3;
@@ -1270,5 +1294,10 @@ getVideoClient = getVideoClientV3;
 errorText = errorTextV3;
 buildScenePlan = buildScenePlanV3;
 init = initV3;
+const previousInitV3 = init;
+init = async function() {
+  await previousInitV3();
+  if ($("testHFConnection")) $("testHFConnection").addEventListener("click", testHFConnectionV4);
+};
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
 else init();
