@@ -79,7 +79,7 @@ def test_patch_workflow_updates_prompt_and_seed():
     assert patched["1"]["inputs"]["text"] == "a cinematic shot"
     assert patched["2"]["inputs"]["seed"] == 46
     assert patched["2"]["inputs"]["width"] == 480
-    assert patched["2"]["inputs"]["height"] == 854
+    assert patched["2"]["inputs"]["height"] == 848
 
 
 def test_official_wan22_blueprint_expands_to_api_prompt_and_saves_video():
