@@ -396,8 +396,17 @@ function visualPrompt(part, index, total, language) {
   rules.push("This is scene " + (index+1) + " of " + total + ". Do not show the other scenes; do not create a sequence or montage.");
   return rules.join(" ");
 }
+function planTextSegments(text) {
+  const s = activeProject() ? (activeProject().settings || defaultSettings()) : defaultSettings();
+  const words = wordCount(text);
+  const targetScenes = Math.max(1, Math.round(Number(s.duration || 2) * 4));
+  // Approximate 15-second scenes while preserving the whole script.
+  // Longer scripts may need more scenes than the target duration can reasonably fit.
+  const wordsPerScene = Math.max(8, Math.min(38, Math.ceil(words / targetScenes)));
+  return splitUnitsIntoScenes(text, wordsPerScene);
+}
 function buildScenePlan(text) {
-  const pieces = splitUnitsIntoScenes(text, 23);
+  const pieces = planTextSegments(text);
   if (pieces.length > 120) throw new Error("القصة طويلة جدًا لإنشاء 120 مشهدًا أو أقل في عملية واحدة. قسّم القصة إلى مشروعين أقصر.");
   const s = activeProject().settings || defaultSettings();
   return pieces.map(function(part, i) {
@@ -421,10 +430,12 @@ function updateScenePreview() {
     root.textContent = "اكتب القصة لتظهر معاينة عدد المشاهد. سيُقسّم النص تلقائيًا قبل بدء الإنتاج.";
     return;
   }
-  const pieces = splitUnitsIntoScenes(text, 23);
+  const pieces = planTextSegments(text);
   const count = pieces.length;
   const longest = pieces.reduce(function(max,p) { return Math.max(max,p.length); }, 0);
-  root.textContent = "معاينة تلقائية: " + count + " مشهدًا · أطول مقطع " + longest + " حرفًا · يُحفظ النص بترتيبه. الصوت الافتراضي للفصحى يستخدم نموذجًا مخصصًا للفصحى، مع حصة تشغيل مجانية محدودة.";
+  const actualMin = Math.round(wordCount(text) / 145 * 10) / 10;
+  const desiredMin = Number($("duration").value || 2);
+  root.textContent = "معاينة تلقائية: " + count + " مشهدًا · أطول مقطع " + longest + " حرفًا · المدة التقريبية للكلام " + actualMin + " دقيقة مقابل هدف " + desiredMin + " دقيقة. سيُحفظ النص بترتيبه دون حذف. قد تختلف مدة الفيديو الفعلية حسب النطق والزمن الذي تنتجه خدمة الفيديو.";
 }
 function renderLink(root, url, label) {
   if (!url) return;
