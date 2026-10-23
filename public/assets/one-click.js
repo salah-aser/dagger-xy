@@ -1443,34 +1443,35 @@ function buildScenePlanV6(text, desiredMinutes) {
     };
   });
 }
-function drawSceneCardV6(clip) {
-  // Keep result previews compact, particularly when revisiting an old failed story.
-  let card = sceneCardNodes.get(clip.id);
-  if (!card) {
-    drawSceneCard(clip);
-    card = sceneCardNodes.get(clip.id);
-    if (!card) return;
-  }
-  const narration = card.querySelector(".clip-narration");
-  if (narration && clip.narration && clip.narration.length > 320) {
-    narration.textContent = clip.narration.slice(0,320) + "…";
-    narration.title = "معاينة مختصرة للنص الكامل لهذا المشهد";
-  }
-}
-function applyHardSplitV6() {
-  const original = buildScenePlan;
-  buildScenePlan = buildScenePlanV6;
-  drawSceneCard = function(clip) {
-    originalDrawSceneCardV6(clip);
-    const card = sceneCardNodes.get(clip.id);
-    const narration = card && card.querySelector(".clip-narration");
-    if (narration && clip.narration && clip.narration.length > 320) {
-      narration.textContent = clip.narration.slice(0,320) + "…";
-      narration.title = "معاينة مختصرة للنص الكامل لهذا المشهد";
-    }
-  };
-}
-
 
 buildScenePlan = buildScenePlanV6;
 errorText = errorTextV3;
+
+
+/* Preview the real generated segmentation and keep old failed cards compact. */
+const previousDrawSceneCardV6 = drawSceneCard;
+drawSceneCard = function(clip) {
+  previousDrawSceneCardV6(clip);
+  const card = sceneCardNodes.get(clip.id);
+  const narration = card && card.querySelector(".clip-narration");
+  if (narration && clip.narration && clip.narration.length > 320) {
+    narration.textContent = clip.narration.slice(0, 320) + "…";
+    narration.title = "معاينة مختصرة للنص الكامل لهذا المشهد";
+  }
+};
+const previousUpdateEstimateV6 = updateEstimate;
+updateEstimate = function() {
+  previousUpdateEstimateV6();
+  const preview = $("scenePlanPreview");
+  if (!preview) return;
+  const story = $("storyScript").value.trim();
+  if (!story) {
+    preview.textContent = "خطة المشاهد ستظهر هنا تلقائيًا عند كتابة السكريبت.";
+    return;
+  }
+  const plan = buildScenePlanV6(story, Number($("durationMinutes").value || 2));
+  const tooLong = plan.filter(function(s) { return s.narration.length > 2800; }).length;
+  preview.textContent = "تقسيم تلقائي جاهز: " + plan.length + " مشهدًا · كل مقطع صوتي أقل من 2800 حرف · النص محفوظ بترتيبه دون حذف. " +
+    (tooLong ? "تنبيه: " + tooLong + " مشاهد تحتاج تقسيمًا إضافيًا." : "سيبدأ توليد كل مشهد (صوت ← صورة ← فيديو) عند ضغط زر «أنشئ الفيديو كاملًا».");
+};
+
