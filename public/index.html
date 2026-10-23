@@ -3,183 +3,142 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#10121b">
-<meta name="description" content="Salah Web — حوّل السكريبت إلى فيديو كامل بصوته ومشاهده بزر واحد.">
-<title>Salah Web — أنشئ الفيديو كاملًا</title>
+<meta name="theme-color" content="#0d1018">
+<meta name="description" content="Salah Studio — مساحة خاصة لتوليد الفيديو بالذكاء الاصطناعي وإدارة القصص والمشاهد.">
+<title>Salah Studio | AI Video</title>
 <style>
-:root{color-scheme:dark;--bg:#0d0f17;--panel:#161a26;--panel2:#1d2231;--line:#30374c;--text:#f4f5fb;--muted:#a9b1c7;--gold:#f0c36d;--violet:#a58bfa;--danger:#ff9898;--green:#9de5b3}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 10% 0%,#26203a 0,transparent 36%),radial-gradient(ellipse at 90% 10%,#222a40 0,transparent 30%),var(--bg);color:var(--text);font-family:Tahoma,Arial,sans-serif;line-height:1.75}
-.wrap{width:min(1280px,calc(100% - 28px));margin:auto}.top{padding:32px 0 20px}
-.app-layout{display:grid;grid-template-columns:275px minmax(0,1fr);gap:18px;direction:rtl;align-items:start}
-.main-content{min-width:0}
-.sidebar{position:sticky;top:14px;max-height:calc(100vh - 28px);overflow-y:auto;padding:16px!important}
-.sidebar-heading{font-size:16px;font-weight:900;margin:0 0 3px}
-.sidebar-caption{font-size:12px;color:var(--muted);margin:0 0 14px;line-height:1.7}
-.new-story-button{width:100%;padding:12px 10px;border:1px solid #e5b968;border-radius:12px;background:#f0c36d;color:#21180a;font:inherit;font-weight:900;cursor:pointer;margin:4px 0 15px}
-.new-story-button:disabled{opacity:.5;cursor:wait}
-.history-label{font-size:11px;color:var(--muted);font-weight:800;margin:8px 0}
-.story-history{display:flex;flex-direction:column;gap:7px}
-.story-history-item{display:flex;flex-direction:column;gap:3px;text-align:right;width:100%;padding:10px;border:1px solid var(--line);border-radius:11px;background:#10131c;color:var(--text);font:inherit;cursor:pointer;min-width:0}
-.story-history-item.active{border-color:var(--gold);background:#f0c36d12;box-shadow:inset -3px 0 0 var(--gold)}
-.story-history-item:disabled{opacity:.75;cursor:wait}
-.history-title{font-size:13px;font-weight:800;overflow-wrap:anywhere;line-height:1.5}
-.history-meta{font-size:10px;color:var(--muted)}
-.history-empty{font-size:12px;color:var(--muted);padding:8px}
-.clip-image{width:100%;max-height:300px;object-fit:contain;background:#080a10;border-radius:10px}
-.clip-audio{width:100%;margin:7px 0}
-.clip-narration{font-size:12px;color:#b9c0d3;line-height:1.7;margin:0 0 8px}
-.clip-subheading{font-size:11px;color:var(--muted);margin:8px 0 0}
-.clip-error{font-size:12px;color:var(--danger);white-space:pre-wrap;overflow-wrap:anywhere;border-top:1px solid var(--line);padding-top:8px}
-@media(max-width:900px){.app-layout{grid-template-columns:1fr}.sidebar{position:relative;top:auto;max-height:none}.story-history{display:flex;flex-direction:row;overflow-x:auto;padding-bottom:5px}.story-history-item{flex:0 0 185px;width:185px}}
-.brand{display:flex;align-items:center;gap:12px;font-weight:900;font-size:20px;letter-spacing:.2px}.logo{width:44px;height:44px;border-radius:15px;background:linear-gradient(135deg,var(--gold),#d69b50);color:#211a12;display:grid;place-items:center;font-weight:1000;font-size:21px;box-shadow:0 8px 30px #f0c36d24}.hero{padding:20px 0 24px}.eyebrow{color:var(--gold);font-size:12px;letter-spacing:1.6px;font-weight:800}.hero h1{font-size:clamp(29px,5vw,46px);line-height:1.3;margin:9px 0 12px;max-width:800px}.hero p{color:var(--muted);font-size:16px;max-width:750px;margin:0}.panel{background:linear-gradient(150deg,#191d2a,#141722);border:1px solid var(--line);border-radius:23px;padding:clamp(17px,3vw,28px);margin:16px 0;box-shadow:0 15px 50px #0002}.panel h2{font-size:21px;margin:0 0 5px}.sub{color:var(--muted);font-size:13px;margin:0 0 18px}.field{margin:17px 0}.field label,.label{display:block;font-weight:800;margin-bottom:8px;font-size:14px}.hint{color:var(--muted);font-size:12px;line-height:1.85}.required{color:var(--gold);font-size:12px;margin-right:6px}textarea,input[type=number],input[type=text],select,input[type=file]{width:100%;background:#0e111a;color:var(--text);border:1px solid #3b435a;border-radius:12px;padding:13px;font:inherit;outline:none}textarea:focus,input:focus,select:focus{border-color:var(--violet);box-shadow:0 0 0 3px #a58bfa1a}textarea{min-height:240px;resize:vertical;line-height:1.9}select{cursor:pointer}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.checkgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.checkitem{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--line);border-radius:12px;padding:12px;color:#dce1ee;font-size:13px}.checkitem input{accent-color:var(--violet);margin-top:5px;flex-shrink:0}.primary{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:59px;border:0;border-radius:15px;background:linear-gradient(110deg,#f0c36d,#e6a84b);color:#20170d;font-size:18px;font-weight:900;font-family:inherit;cursor:pointer;margin-top:20px;box-shadow:0 10px 35px #f0c36d18;transition:transform .15s,opacity .15s}.primary:hover{transform:translateY(-1px)}.primary:disabled{opacity:.55;cursor:wait;transform:none}.disclosure{border:1px solid var(--line);border-radius:14px;margin-top:18px;background:#11141e}.disclosure summary{cursor:pointer;font-weight:800;padding:13px 15px}.disclosure-inner{padding:2px 15px 16px}.status{border:1px solid var(--line);background:#11141e;border-radius:17px;padding:16px;margin:18px 0}.status h3{margin:0 0 5px;font-size:17px}.status p{margin:0;color:var(--muted);font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}.status h3.error{color:var(--danger)}.status h3.success{color:var(--green)}progress{width:100%;height:9px;accent-color:var(--gold);margin:10px 0 4px}.progress-label{font-size:12px;color:var(--muted)}.hidden{display:none!important}.notice{font-size:12px;color:#c2c8d7;border-right:3px solid var(--gold);padding:8px 12px;background:#f0c36d0b;margin:14px 0 4px}.estimate{padding:12px 14px;background:#10131c;border:1px solid var(--line);color:#c5cce0;border-radius:13px;font-size:12px;margin-top:12px}.result-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}.result-head h2{margin:0}.clip-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.clip-card{background:#10131c;border:1px solid var(--line);padding:13px;border-radius:16px;min-width:0}.clip-card h3{font-size:14px;margin:0 0 9px}.clip-card video{width:100%;max-height:360px;background:#050607;border-radius:10px}.clip-links{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px}.clip-links a,.download{color:var(--gold);font-size:13px;font-weight:800;text-decoration:none}.download{display:inline-flex;align-items:center;justify-content:center;background:#f0c36d;color:#21180a;border-radius:12px;padding:13px 20px;margin:10px 0;font-size:15px}.final-video{width:100%;max-height:70vh;background:#050607;border-radius:15px;margin-top:10px}.footer{padding:30px 0 46px;color:var(--muted);font-size:12px}.footer a{color:var(--gold);text-decoration:none}.tiny{font-size:11px;color:#929bb2}
-@media(max-width:700px){.grid,.grid2,.checkgrid{grid-template-columns:1fr}.clip-grid{grid-template-columns:1fr}.top{padding-top:22px}.hero{padding-top:14px}textarea{min-height:210px}.panel{border-radius:18px}.result-head{align-items:flex-start;flex-direction:column}}
+:root{color-scheme:dark;--bg:#0b0e15;--panel:#151a26;--panel2:#1b2231;--line:#30384d;--text:#f5f6fb;--muted:#a7b1c7;--gold:#f0c36d;--purple:#9f8cf8;--green:#9de4b2;--red:#ff9b9b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 0% 0%,#29213b 0,transparent 34%),radial-gradient(ellipse at 100% 0%,#182b3d 0,transparent 30%),var(--bg);color:var(--text);font-family:Tahoma,Arial,sans-serif;line-height:1.75}.layout{width:min(1450px,calc(100% - 26px));margin:auto;display:grid;grid-template-columns:280px minmax(0,1fr);gap:18px;direction:rtl;align-items:start}.header{grid-column:1/-1;padding:24px 0 8px;display:flex;align-items:center;gap:13px}.logo{width:49px;height:49px;border-radius:16px;background:linear-gradient(135deg,#f4d48c,#df9e3d);display:grid;place-items:center;font-weight:1000;font-size:24px;color:#21180d;box-shadow:0 12px 35px #f0c36d20}.brand{font-size:22px;font-weight:900;letter-spacing:.2px}.brand small{font-size:10px;display:block;letter-spacing:2px;color:var(--gold)}.hero{margin-right:auto;max-width:570px}.hero strong{font-size:15px}.hero p{font-size:12px;color:var(--muted);margin:2px 0 0}.sidebar,.panel{background:linear-gradient(145deg,#191e2c,#131722);border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:0 14px 45px #0002}.sidebar{position:sticky;top:13px;max-height:calc(100vh - 26px);overflow:auto}.sidebar h2{font-size:17px;margin:0}.muted{color:var(--muted);font-size:12px}.new-btn{width:100%;border:0;border-radius:13px;background:var(--gold);color:#241b0d;font:inherit;font-weight:900;cursor:pointer;padding:13px;margin:14px 0}.new-btn:disabled{opacity:.55}.section-caption{font-size:11px;color:var(--muted);font-weight:800;margin:12px 0 8px}.history{display:flex;flex-direction:column;gap:8px}.history-item{display:flex;flex-direction:column;gap:2px;text-align:right;border:1px solid var(--line);border-radius:12px;padding:10px;background:#10141e;color:var(--text);font:inherit;cursor:pointer;min-width:0}.history-item strong{font-size:12px;line-height:1.5;overflow-wrap:anywhere}.history-item span{font-size:10px;color:var(--muted)}.history-item.active{border-color:var(--gold);background:#f0c36d11;box-shadow:inset -3px 0 var(--gold)}.history-item:disabled{opacity:.6;cursor:wait}.empty-history{font-size:12px;color:var(--muted)}.main{min-width:0}.panel{margin-bottom:16px}.panel h2{font-size:20px;margin:0 0 5px}.sub{font-size:12px;color:var(--muted);margin:0 0 15px}.field{margin:16px 0}.field label,.label{display:block;font-size:13px;font-weight:800;margin-bottom:7px}textarea,input[type=text],input[type=number],select{width:100%;background:#0d111a;color:var(--text);border:1px solid #39435b;border-radius:12px;padding:12px;font:inherit;outline:none}textarea:focus,input:focus,select:focus{border-color:var(--purple);box-shadow:0 0 0 3px #9f8cf81b}textarea{resize:vertical;min-height:255px;line-height:1.9}#characters{min-height:93px}.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.checks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.check{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:11px;padding:11px;font-size:12px;color:#dbe1ef}.check input{margin-top:6px;accent-color:var(--purple)}.hint{font-size:11px;color:var(--muted)}.preview{background:#0f131d;border:1px solid var(--line);padding:11px 13px;border-radius:12px;color:#c6cee0;font-size:12px;margin-top:10px}.action{display:flex;justify-content:center;align-items:center;gap:10px;width:100%;min-height:60px;border:0;border-radius:15px;margin-top:20px;background:linear-gradient(110deg,#f3d184,#e5a444);color:#1f180f;font:inherit;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 12px 33px #f0c36d19}.action:disabled{opacity:.55;cursor:wait}.notice{border-right:3px solid var(--gold);background:#f0c36d0b;padding:9px 12px;color:#ccd2e0;font-size:11px;margin:15px 0 4px}.status{background:#0f131d;border:1px solid var(--line);padding:15px;border-radius:15px;margin-top:17px}.status h3{font-size:16px;margin:0 0 5px}.status p{font-size:12px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;margin:0}.status h3.bad{color:var(--red)}.status h3.good{color:var(--green)}progress{width:100%;height:10px;margin:9px 0 2px;accent-color:var(--gold)}.progress-label{font-size:11px;color:#c0c7d8}.hidden{display:none!important}.result-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}.result-head h2{margin:0}.results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.result-card{min-width:0;border:1px solid var(--line);background:#0f131d;border-radius:15px;padding:13px;overflow:hidden}.result-card h3{font-size:13px;margin:0 0 8px}.scene-script{color:#c6cde0;font-size:11px;line-height:1.7;margin:0 0 10px}.scene-image{display:block;max-width:100%;width:100%;max-height:380px;object-fit:contain;background:#06070b;border-radius:10px}.result-card audio,.result-card video{display:block;width:100%;margin-top:9px;max-height:420px;background:#050607;border-radius:10px}.asset-label{font-size:11px;color:var(--gold);margin-top:10px;font-weight:800}.result-links{display:flex;gap:15px;flex-wrap:wrap;margin-top:10px}.result-links a{font-size:11px;font-weight:800;color:var(--gold);text-decoration:none}.scene-error{font-size:11px;color:var(--red);white-space:pre-wrap;overflow-wrap:anywhere;border-top:1px solid var(--line);padding-top:9px}.final-video{display:block;width:100%;max-height:70vh;background:#050607;border-radius:14px;margin-top:14px}.download{display:inline-block;background:var(--gold);color:#23190b;border-radius:11px;padding:12px 18px;text-decoration:none;font-weight:900;font-size:13px;margin-top:12px}.footer{grid-column:1/-1;padding:10px 0 30px;color:var(--muted);font-size:11px}.footer a{color:var(--gold)}.tag{border:1px solid #4d4768;color:#c8bcff;padding:3px 7px;border-radius:7px;font-size:10px;margin-right:5px}
+@media(max-width:980px){.layout{grid-template-columns:1fr}.sidebar{position:relative;top:auto;max-height:none;order:1}.main{order:2}.header{grid-column:1}.footer{grid-column:1}.history{display:flex;flex-direction:row;overflow-x:auto;padding-bottom:5px}.history-item{flex:0 0 190px}.hero{display:none}}@media(max-width:660px){.grid3,.grid2,.checks,.results{grid-template-columns:1fr}.layout{width:calc(100% - 16px);gap:10px}.header{padding-top:14px}.sidebar,.panel{padding:15px;border-radius:17px}.brand{font-size:18px}.logo{width:42px;height:42px}.action{font-size:16px;min-height:55px}textarea{min-height:220px}.result-head{align-items:flex-start;flex-direction:column}}
 </style>
 </head>
 <body>
-<div class="wrap">
-<header class="top">
-  <div class="brand"><div class="logo">S</div><span>Salah Web <span class="tiny">STORY → FULL VIDEO</span></span></div>
-  <section class="hero">
-    <div class="eyebrow">إنتاج سينمائي تلقائي</div>
-    <h1>من السكريبت إلى الفيديو الكامل — <span style="color:var(--gold)">بزر واحد</span></h1>
-    <p>اكتب القصة، اختَر المدة والمقاس والجودة، واكتب وصف الشخصيات لو احتجت. الموقع يقسم القصة تلقائيًا، ويولّد الصوت والصور والفيديو لكل مشهد، ثم يجمع المقاطع ويركب الصوت في ملف MP4 واحد.</p>
-  </section>
-</header>
+<div class="layout">
+  <header class="header">
+    <div class="logo">S</div>
+    <div class="brand">Salah Studio<small>AI VIDEO WORKSPACE</small></div>
+    <div class="hero"><strong>قصتك تتحول إلى فيديو تلقائيًا</strong><p>نص واحد، مشاهد متتابعة، تعليق صوتي، فيديوهات قابلة للتنزيل، وسجل خاص بكل مشروع.</p></div>
+  </header>
 
-<div class="app-layout">
-<aside class="sidebar panel" aria-label="سجل القصص">
-  <h2 class="sidebar-heading">قصصي</h2>
-  <p class="sidebar-caption">كل قصة لها نصها وشخصياتها وإعداداتها ونتائجها المستقلة.</p>
-  <button id="newStoryButton" class="new-story-button" type="button">＋ قصة جديدة</button>
-  <div class="history-label">القصص السابقة</div>
-  <nav id="storyHistory" class="story-history" aria-label="القصص السابقة"></nav>
-</aside>
-<main class="main-content">
-<section class="panel">
-  <h2>١. اكتب القصة</h2>
-  <p class="sub">لا تحتاج إلى تحويل النص لبرومبتات، ولا اختيار المشاهد يدويًا.</p>
-  <div class="field">
-    <label for="storyScript">السكريبت كاملًا <span class="required">مطلوب</span></label>
-    <textarea id="storyScript" placeholder="الصق القصة كاملة هنا... سيحافظ الموقع على ترتيب الأحداث ويقسّم النص تلقائيًا من أوله إلى آخره دون تكرار الأجزاء."></textarea>
-    <div id="estimateText" class="estimate">اكتب السكريبت هنا. سيُقسّم تلقائيًا إلى مشاهد متتابعة قريبة من 15 ثانية حسب طول النص.</div>
-    <div id="scenePlanPreview" class="estimate">خطة المشاهد ستظهر هنا تلقائيًا عند كتابة السكريبت.</div>
-  </div>
+  <aside class="sidebar">
+    <h2>مشاريعي</h2>
+    <p class="muted">لكل قصة نصها وشخصياتها وإعداداتها ونتائجها المستقلة.</p>
+    <button id="newProject" class="new-btn" type="button">＋ قصة جديدة</button>
+    <div class="section-caption">القصص السابقة</div>
+    <nav id="history" class="history" aria-label="سجل القصص"></nav>
+    <p class="hint">يُحفظ السجل في هذا المتصفح فقط، ولا تتم مزامنته تلقائيًا بين الأجهزة.</p>
+  </aside>
 
-  <div class="field">
-    <label for="characterDescription">وصف الشخصيات وثبات شكلها <span class="required">اختياري</span></label>
-    <textarea id="characterDescription" style="min-height:105px" placeholder="مثلًا: رجل عربي في الأربعين، بشرة قمحية، لحية سوداء قصيرة، عباءة بنية وعمامة كريمية. حافظ على نفس المظهر في كل مشاهد القصة."></textarea>
-  </div>
-
-  <div class="field">
-    <label>قواعد الصورة</label>
-    <div class="checkgrid">
-      <label class="checkitem"><input type="checkbox" id="arabicCharacters" checked><span>شخصيات وبيئة عربية</span></label>
-      <label class="checkitem"><input type="checkbox" id="historicClothing" checked><span>ملابس تاريخية مناسبة إذا كانت القصة قديمة</span></label>
-      <label class="checkitem"><input type="checkbox" id="religiousFaces" checked><span>احترام تصوير الأنبياء والرسل والصحابة بنور كامل بدل ملامح الوجه</span></label>
-    </div>
-  </div>
-</section>
-
-<section class="panel">
-  <h2>٢. إعدادات الفيديو</h2>
-  <p class="sub">اختياراتك تُطبّق تلقائيًا على كل المشاهد.</p>
-  <div class="grid">
-    <div class="field">
-      <label for="durationMinutes">المدة المستهدفة بالدقائق</label>
-      <input id="durationMinutes" type="number" min="0.25" max="10" step="0.25" value="2">
-      <div class="hint">المشاهد تُخطط في وحدات تقارب ١٥ ثانية. طول النص الفعلي يؤثر في المدة النهائية.</div>
-    </div>
-    <div class="field">
-      <label for="aspectRatio">مقاس الفيديو</label>
-      <select id="aspectRatio"><option value="9:16">9:16 — شورتس وريلز</option><option value="16:9">16:9 — يوتيوب أفقي</option><option value="1:1">1:1 — مربع</option></select>
-    </div>
-    <div class="field">
-      <label for="videoQuality">جودة الفيديو</label>
-      <select id="videoQuality"><option value="480P">480P — أخف وأسرع</option><option value="720P">720P — أعلى</option></select>
-    </div>
-  </div>
-  <div class="grid">
-    <div class="field">
-      <label for="stylePreset">الأسلوب البصري</label>
-      <select id="stylePreset"><option value="cinematic">سينمائي واقعي</option><option value="historical">تاريخي واقعي</option><option value="horror">رعب جاد</option><option value="spiritual">ديني وروحاني</option><option value="documentary">وثائقي</option><option value="realistic">واقعية فائقة</option></select>
-    </div>
-    <div class="field">
-      <label for="voiceSpeed">سرعة الإلقاء</label>
-      <select id="voiceSpeed"><option value="0.82">بطيء ودرامي</option><option value="0.92" selected>سينمائي متزن</option><option value="1">طبيعي</option><option value="1.08">أسرع قليلًا</option></select>
-    </div>
-    <div class="field">
-      <label for="voiceSteps">دقة توليد الصوت</label>
-      <select id="voiceSteps"><option value="24">أسرع</option><option value="32" selected>متوازن</option><option value="40">أعلى وقتًا</option></select>
-    </div>
-  </div>
-
-  <details class="disclosure">
-    <summary>اختياري: استخدام صوتك أنت بدل الصوت العربي الجاهز</summary>
-    <div class="disclosure-inner">
-      <p class="hint">لو حفظت بصمة صوتك سابقًا في هذا المتصفح، سيستخدمها الموقع تلقائيًا. وإلا سيستخدم صوتًا عربيًا جاهزًا من النموذج دون أي خطوة منك. رفع عينة صوتك اختياري ويكفي مرة واحدة لكل متصفح.</p>
+  <main class="main">
+    <section class="panel">
+      <h2>١. القصة والشخصيات</h2>
+      <p class="sub">اكتب السكريبت كاملًا. الموقع يتولى تقسيمه إلى مشاهد قصيرة دون الحاجة لنسخ برومبتات يدويًا.</p>
       <div class="field">
-        <label for="voiceReferenceFile">ملف صوت واضح (WAV / MP3)</label>
-        <input id="voiceReferenceFile" type="file" accept="audio/*">
+        <label for="script">السكريبت الكامل</label>
+        <textarea id="script" placeholder="الصق القصة هنا من أول حدث لآخر حدث. سيحافظ الموقع على ترتيبها ويقسّمها تلقائيًا إلى مشاهد متتابعة."></textarea>
+        <div class="preview" id="scenePreview">اكتب القصة لتظهر معاينة عدد المشاهد. سيُقسّم النص تلقائيًا قبل بدء الإنتاج.</div>
       </div>
-      <div class="grid">
-        <div class="field"><label for="voiceStart">بداية العينة بالثواني</label><input id="voiceStart" type="number" min="0" step="0.5" value="0"></div>
-        <div class="field"><label for="voiceClipDuration">مدة العينة</label><select id="voiceClipDuration"><option value="8">8 ثوانٍ</option><option value="12" selected>12 ثانية</option><option value="15">15 ثانية</option></select></div>
-        <div class="field"><label for="voiceTranscript">الكلام الموجود في العينة (اختياري)</label><input id="voiceTranscript" type="text" placeholder="اكتب ما يُقال في المقطع"></div>
-      </div>
-      <button id="saveVoiceSample" type="button" class="primary" style="min-height:45px;margin-top:8px;font-size:14px">حفظ عينة الصوت لاستخدامها تلقائيًا</button>
-      <p id="voiceSampleStatus" class="hint">جارٍ التحقق من وجود عينة محفوظة…</p>
-    </div>
-  </details>
-
-  <details class="disclosure" open>
-    <summary>حل مشكلة الحصة المجانية — تسجيل Hugging Face (افتح هذا القسم)</summary>
-    <div class="disclosure-inner">
-      <p class="hint" style="color:var(--danger)">مهم للأمان: ألغِ التوكن الذي أرسلته في المحادثة وأنشئ واحدًا جديدًا عند الحاجة. أدخل التوكن هنا للتحقق من صلاحيته عبر huggingface.co فقط؛ لن يُحفظ في الموقع ولن يُرسل إلى مساحات النماذج العامة. التحقق من التوكن لا يزيل حدود الاستخدام المجاني.</p>
       <div class="field">
-        <label for="hfTokenInput">Hugging Face Access Token</label>
-        <input id="hfTokenInput" type="password" autocomplete="new-password" spellcheck="false" placeholder="hf_…">
-        <div class="hint">أنشئ التوكن من صفحة <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener" style="color:var(--gold)">Hugging Face Tokens</a>. لا ترسله في المحادثة.</div>
+        <label for="characters">وصف الشخصيات وثبات مظهرها (اختياري)</label>
+        <textarea id="characters" placeholder="مثال: رجل عربي في الأربعين، بشرة قمحية، لحية سوداء قصيرة، عباءة بنية وعمامة كريمية. كرّر الوصف نفسه بصريًا في جميع المشاهد." ></textarea>
+        <div class="hint">يُدرج الوصف في كل مشهد للمساعدة على الاتساق؛ تثبيت الوجه بنسبة 100% غير مضمون بالنماذج العامة.</div>
       </div>
-      <div class="grid2">
-        <button id="saveHFToken" type="button" class="primary" style="min-height:45px;margin-top:8px;font-size:14px">تحقق من التوكن بأمان</button>
-        <button id="testHFConnection" type="button" class="primary" style="min-height:45px;margin-top:8px;font-size:14px;background:#353a4c;color:#f4f5fb;box-shadow:none">اختبار الاتصال</button>
+      <div class="field">
+        <label>قواعد الصورة</label>
+        <div class="checks">
+          <label class="check"><input id="arabic" type="checkbox" checked><span>شخصيات وبيئة عربية</span></label>
+          <label class="check"><input id="periodClothes" type="checkbox" checked><span>ملابس تاريخية مناسبة عند الحاجة</span></label>
+          <label class="check"><input id="religiousRule" type="checkbox" checked><span>تصوير محترم للأنبياء والرسل والصحابة مع وجه نور بلا ملامح</span></label>
+        </div>
       </div>
-      <button id="clearHFToken" type="button" class="primary" style="min-height:42px;margin-top:8px;font-size:13px;background:#282d3d;color:#f4f5fb;box-shadow:none">مسح أي توكن قديم من هذا الجهاز</button>
-      <p id="hfTokenStatus" class="hint">لم يتم حفظ توكن لهذا المتصفح.</p>
-      <p class="hint">لتحسين الصوت: الموقع يقسم السكريبت عند علامات الترقيم قدر الإمكان حتى لا ينتهي جزء الصوت عشوائيًا في منتصف جملة، مع أن دقة النطق تعتمد أيضًا على النموذج نفسه.</p>
-    </div>
-  </details>
+    </section>
 
-  <div class="notice">بالضغط على «أنشئ الفيديو كاملًا»، سيُرسل الموقع أجزاء السكريبت والصوت والصور اللازمة إلى خدمات توليد خارجية. هذه الخدمات لها حصص وقد تتعطل أو ترفض بعض الطلبات؛ لا يمكن ضمان توليد مجاني غير محدود أو ثبات شكل الشخصية تمامًا.</div>
-  <button id="generateFullVideo" class="primary" type="button">أنشئ الفيديو كاملًا <span aria-hidden="true">✦</span></button>
+    <section class="panel">
+      <h2>٢. إعدادات الإنتاج</h2>
+      <p class="sub">تُطبَّق الإعدادات على جميع المشاهد في هذه القصة وحدها.</p>
+      <div class="grid3">
+        <div class="field">
+          <label for="language">لغة التعليق الصوتي</label>
+          <select id="language">
+            <option value="fusha" selected>العربية الفصحى — نموذج مخصص للفصحى</option>
+            <option value="egyptian">العربية المصرية</option>
+            <option value="english">الإنجليزية</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="duration">المدة المستهدفة بالدقائق</label>
+          <input id="duration" type="number" min="0.25" max="10" step="0.25" value="2">
+        </div>
+        <div class="field">
+          <label for="aspect">نسبة الأبعاد</label>
+          <select id="aspect">
+            <option value="9:16" selected>9:16 — Shorts / Reels</option>
+            <option value="16:9">16:9 — فيديو أفقي</option>
+            <option value="1:1">1:1 — مربع</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid3">
+        <div class="field">
+          <label for="resolution">جودة الفيديو</label>
+          <select id="resolution">
+            <option value="480P" selected>480p — أخف</option>
+            <option value="720P">720p — أعلى</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="style">الأسلوب البصري</label>
+          <select id="style">
+            <option value="cinematic" selected>سينمائي واقعي</option>
+            <option value="historical">تاريخي</option>
+            <option value="horror">رعب جاد</option>
+            <option value="spiritual">ديني وروحاني</option>
+            <option value="documentary">وثائقي</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="speed">سرعة التعليق الصوتي</label>
+          <select id="speed">
+            <option value="0.85">بطيء ودرامي</option>
+            <option value="1" selected>طبيعي</option>
+            <option value="1.08">أسرع قليلًا</option>
+          </select>
+        </div>
+      </div>
+      <div class="notice">
+        <strong>الشفافية حول المجانية:</strong> الواجهة والكود ملكك، لكن توليد الصوت والفيديو يتم عبر خدمات خارجية لها حصص وقد تتوقف أو تتغير. نسخة Wan2.2-S2V العامة تستدعي خدمة فيديو خارجية، لذلك لا يمكن ضمان إنتاج غير محدود ومجاني للأبد. نسبة التقدم تحسب المراحل المكتملة ولا تمثل نسبة داخلية دقيقة من النموذج.
+      </div>
+      <button id="createVideo" class="action" type="button">أنشئ الفيديو الكامل <span aria-hidden="true">✦</span></button>
+      <div id="statusBox" class="status hidden" aria-live="polite">
+        <h3 id="statusTitle">جاهز</h3>
+        <p id="statusDetail"></p>
+        <progress id="progress" max="100" value="0"></progress>
+        <div id="progressLabel" class="progress-label">0%</div>
+      </div>
+    </section>
 
-  <div id="statusBox" class="status hidden" role="status" aria-live="polite">
-    <h3 id="statusTitle">جارٍ تجهيز الفيديو…</h3>
-    <p id="statusDetail"></p>
-    <progress id="progressBar" value="0" max="1"></progress>
-    <div id="progressLabel" class="progress-label"></div>
-  </div>
-</section>
+    <section class="panel hidden" id="finalArea">
+      <div class="result-head">
+        <div><div class="tag">النتيجة النهائية</div><h2>فيديو القصة بالكامل</h2><p id="finalInfo" class="sub"></p></div>
+      </div>
+      <video id="finalVideo" class="final-video hidden" controls playsinline></video>
+      <a id="downloadFinal" class="download hidden" href="#" download="Salah-Web-Story.mp4">تنزيل الفيديو النهائي MP4</a>
+    </section>
 
-<section id="finalArea" class="panel hidden">
-  <div class="result-head"><div><div class="eyebrow">النتيجة النهائية</div><h2>فيديو القصة كاملًا</h2><p id="finalFileInfo" class="sub"></p></div></div>
-  <video id="finalVideo" class="final-video hidden" controls playsinline></video>
-  <a id="downloadFinalVideo" class="download hidden" href="#" download="Salah-Web-Full-Video.mp4">تنزيل الفيديو الكامل MP4</a>
-</section>
+    <section class="panel">
+      <div class="result-head">
+        <div><div class="tag">النتائج الحية</div><h2>مشاهد الفيديو</h2><p class="sub">تظهر كل لقطة وصوتها وفيديوها فور اكتمال كل مرحلة. إذا تعذر الدمج، تظل روابط المشاهد الناجحة متاحة هنا.</p></div>
+      </div>
+      <div id="results" class="results"></div>
+    </section>
+  </main>
 
-<section class="panel">
-  <div class="result-head"><div><div class="eyebrow">المشاهد الناتجة</div><h2>المقاطع التي تم إنشاؤها</h2><p class="sub">تظهر هنا تلقائيًا أثناء العمل. إذا تعذّر دمج الفيديو النهائي، يمكنك تنزيل المقاطع الناجحة من هنا.</p></div></div>
-  <div id="clipResults" class="clip-grid"><p class="hint">لم يبدأ التوليد بعد. ستظهر النتائج هنا تلقائيًا بعد الضغط على زر إنشاء الفيديو الكامل.</p></div>
-</section>
-</main>
+  <footer class="footer">
+    <strong>Salah Studio</strong> — كود الواجهة مفتوح داخل مستودعك. نماذج الصوت والصورة والفيديو خدمات مستقلة بشروطها وحدودها.
+    <br><a href="https://github.com/salah-aser/dagger-xy" target="_blank" rel="noopener">مشروع Salah Studio على GitHub</a>
+    · <a href="./advanced-planner.html">المخطط القديم</a>
+  </footer>
 </div>
-
-<footer class="footer">
-  <p><strong>Salah Web</strong> — نسخة ويب تعمل من المتصفح دون تثبيت برامج.</p>
-  <p>تعتمد عملية التوليد على توفر النماذج العامة وحدودها. المدة ودقة الصوت ومزامنة حركة الفم وثبات ملامح الشخصية ليست مضمونة في كل مرة.</p>
-  <a href="https://github.com/salah-aser/dagger-xy">المشروع على GitHub</a> · <a href="./advanced-planner.html">فتح المخطط القديم</a>
-</footer>
-</div>
-<script type="module" src="./assets/one-click.js?v=20261023-scene-split-fix2"></script>
+<script type="module" src="./assets/studio.js?v=20261024-studio1"></script>
 </body>
 </html>
