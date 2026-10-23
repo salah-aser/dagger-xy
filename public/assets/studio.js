@@ -715,7 +715,14 @@ async function createStill(scene, index, total) {
 async function createMotion(scene,imageUrl,audioUrl) {
   status("المشهد " + scene.id + " — تحريك الصورة وربطها بالصوت", "خدمة Wan2.2-S2V تحرك صورة مرجعية بناءً على الصوت. زمن الخدمة وحدودها خارج سيطرة الموقع.");
   const client = await withTimeout(clientForVideo(),45000,"الاتصال بخدمة الفيديو");
-  const result = await withTimeout(client.predict("/predict",[await handle_file(imageUrl),await handle_file(audioUrl),$("resolution").value]),360000,"توليد الفيديو");
+  let audioInput = audioUrl;
+  if (scene.audioKey) {
+    try {
+      const savedBlob = await readMediaBlob(scene.audioKey);
+      if (savedBlob) audioInput = new File([savedBlob],"Salah-Web-Narration.wav",{type:"audio/wav"});
+    } catch (_) {}
+  }
+  const result = await withTimeout(client.predict("/predict",[await handle_file(imageUrl),await handle_file(audioInput),$("resolution").value]),360000,"توليد الفيديو");
   const url = findAssetUrl(result && result.data,"video");
   if (!url) throw new Error("خدمة الفيديو لم تُرجع ملف فيديو قابلًا للتشغيل.");
   return url;
@@ -807,6 +814,13 @@ async function createFullVideo() {
   if (!activeProject()) { const p=createProject(); projects.unshift(p); activeId=p.id; }
   saveCurrentProject();
   const p=activeProject();
+  let scenes;
+  try {
+    scenes = buildScenePlan(script);
+  } catch (e) {
+    status("تعذر تقسيم القصة",describeError(e),"error");
+    return;
+  }
   // Preserve completed assets from the last attempt; a quota failure should not force new audio/image calls.
   const previousClips = Array.isArray(p.clips) ? p.clips.map(function(c) {
     return {id:c.id,narration:c.narration,stage:c.stage,audioUrl:c.audioUrl||null,imageUrl:c.imageUrl||null,videoUrl:c.videoUrl||null,audioKey:c.audioKey||null,error:c.error||null};
@@ -818,7 +832,6 @@ async function createFullVideo() {
   activeClips.forEach(function(c){drawClip(c);});
   p.status="running";p.progress=0;p.finalUrl="";p.statusTitle="بدأ الإنتاج / استكمال المشاهد";
   p.statusDetail="سيعيد استخدام الأصوات والصور والفيديوهات المكتملة سابقًا ما دامت روابطها ما زالت صالحة.";
-  const scenes=buildScenePlan(script);
   activeScenes=scenes;
   p.sceneCount=scenes.length;
   p.segments=scenes.map(function(s){return {id:s.id,narration:s.narration};});
