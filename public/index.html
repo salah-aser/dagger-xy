@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0b0e15">
-<title>Salah Cloud — واجهة التحكم</title>
+<title>Salah Cloud — محرك الفيديو الخاص</title>
 <style>
 :root{color-scheme:dark;--bg:#0b0e15;--panel:#151a26;--line:#30394d;--text:#f5f6fb;--muted:#a4aec4;--gold:#f0c36d;--green:#8ce1ac;--red:#ff9b9b}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 20% 0,#29223b 0,transparent 36%),var(--bg);color:var(--text);font-family:Tahoma,Arial,sans-serif;line-height:1.75}
@@ -23,7 +23,7 @@ progress{width:100%;height:8px;accent-color:var(--gold)}.jobs{display:grid;gap:1
 </head>
 <body>
 <header><div class="logo">S</div><div class="brand">Salah Cloud<small>PRIVATE AI VIDEO ENGINE</small></div></header>
-<div style="max-width:1160px;margin:18px auto 0;padding:13px 18px;border:1px solid #4d4569;border-radius:14px;background:#161323;color:#e3dff5;font:13px/1.8 Tahoma,Arial,sans-serif">هذه صفحة التحكم فقط. لكي تولّد فيديوهات فعلية، اربطها بعنوان سيرفر Salah Cloud الذي يعمل على GPU. GitHub Pages لا يشغّل نماذج فيديو أو يستضيف GPU.</div>
+<div style="max-width:1160px;margin:18px auto 0;padding:13px 18px;border:1px solid #4d4569;border-radius:14px;background:#161323;color:#e3dff5;font:13px/1.8 Tahoma,Arial,sans-serif">هذه واجهة التحكم فقط. توليد الفيديو يحتاج إلى تشغيل محرك Salah Cloud على جهاز/سيرفر Linux مع GPU متوافق وربطه من قسم الاتصال. صفحة GitHub Pages لا تشغّل GPU بنفسها.</div>
 <div class="wrap">
 <aside class="sticky">
 <section class="panel">
@@ -35,10 +35,10 @@ progress{width:100%;height:8px;accent-color:var(--gold)}.jobs{display:grid;gap:1
 <div class="health" id="healthDetails"></div>
 </section>
 <section class="panel">
-<div class="kicker">٢ — محرك الفيديو</div><h2>إعداد سير العمل</h2><p class="sub">ارفع ملف JSON محفوظًا من ComfyUI بصيغة API. يُحفظ الملف على سيرفرك الخاص.</p>
+<div class="kicker">٢ — محرك الفيديو</div><h2>إعداد سير العمل</h2><p class="sub">يتضمن Salah Cloud قالب Wan 2.2 افتراضيًا. يمكنك رفع ملف API JSON خاص بك لاستخدام سير عمل مختلف؛ يُحفظ على سيرفرك الخاص.</p>
 <div class="field"><label for="workflowFile">ComfyUI API workflow (.json)</label><input id="workflowFile" type="file" accept=".json,application/json"></div>
 <button class="btn darkbtn full" id="uploadWorkflow">حفظ سير العمل على السيرفر</button>
-<p class="small">حمّل النماذج وافتحها داخل ComfyUI، ثم اختر Save (API Format). هذا إعداد لمرة واحدة.</p>
+<p class="small">اختياري: لا تحتاج إلى رفع ملف إذا أردت استخدام قالب Wan 2.2 الافتراضي. حمّل نماذج Wan 2.2 إلى مجلد models أولًا.</p>
 </section>
 <div class="note"><strong>الخصوصية والتكلفة:</strong> عند استخدام الصوت المحلي لا يُرسل النص لخدمة TTS خارجية. اختيار الصوت السحابي يرسل النص إلى مزود الصوت. توليد الفيديو يعمل على GPU السيرفر؛ هذه اللوحة لا توفر GPU مجانيًا بنفسها.</div>
 </aside>
