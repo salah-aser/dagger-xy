@@ -420,8 +420,6 @@ async function init() {
   $("generateFullVideo").addEventListener("click", runFullWorkflow);
   updateEstimate();
 }
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
-else init();
 
 
 /* One story = one independent workspace, including its own character description and settings. */
@@ -613,7 +611,7 @@ function switchStorySession(id) {
   applyStorySessionToPage(session);
   renderStoryHistory();
 }
-function setStatus(title, detail, kind) {
+function setStatusV2(title, detail, kind) {
   $("statusBox").classList.remove("hidden");
   $("statusTitle").textContent = title;
   $("statusDetail").textContent = detail || "";
@@ -630,7 +628,7 @@ function setStatus(title, detail, kind) {
   }
   renderStoryHistory();
 }
-function setProgress(value, max, label) {
+function setProgressV2(value, max, label) {
   const denominator = Math.max(1, Number(max) || 1);
   const v = Math.max(0, Math.min(Number(value) || 0, denominator));
   $("progressBar").max = denominator;
@@ -643,7 +641,7 @@ function setProgress(value, max, label) {
     persistSessions();
   }
 }
-function setBusy(value) {
+function setBusyV2(value) {
   isBusy = value;
   if ($("generateFullVideo")) $("generateFullVideo").disabled = value;
   if ($("saveVoiceSample")) $("saveVoiceSample").disabled = value;
@@ -767,7 +765,7 @@ function withModelTimeout(promise, ms, stageName) {
   });
   return Promise.race([promise, timeout]).finally(function() { clearTimeout(timer); });
 }
-async function synthesizeVoice(scene, speed, steps) {
+async function synthesizeVoiceV2(scene, speed, steps) {
   const client = await withModelTimeout(getVoiceClient(), 90000, "الاتصال بخدمة الصوت");
   let args;
   if (voiceProfile && voiceProfile.blob) {
@@ -781,7 +779,7 @@ async function synthesizeVoice(scene, speed, steps) {
   if (!audioUrl) throw new Error("عاد نموذج الصوت من دون رابط ملف صوتي يمكن تشغيله.");
   return audioUrl;
 }
-async function generateImage(scene, aspect) {
+async function generateImageV2(scene, aspect) {
   const client = await withModelTimeout(getImageClient(), 90000, "الاتصال بخدمة الصور");
   const size = imageSize(aspect);
   const result = await withModelTimeout(client.predict("/generate_image", [scene.visual, size.height, size.width, 9, 42 + scene.id, true]), 240000, "توليد الصورة");
@@ -789,14 +787,14 @@ async function generateImage(scene, aspect) {
   if (!imageUrl) throw new Error("عاد نموذج الصور من دون صورة قابلة للاستخدام. تحقق من أن واجهة خدمة الصور العامة متاحة.");
   return imageUrl;
 }
-async function generateVideo(scene, imageUrl, audioUrl, quality) {
+async function generateVideoV2(scene, imageUrl, audioUrl, quality) {
   const client = await withModelTimeout(getVideoClient(), 90000, "الاتصال بخدمة الفيديو");
   const result = await withModelTimeout(client.predict("/predict", [handle_file(imageUrl), handle_file(audioUrl), quality]), 300000, "توليد الفيديو");
   const videoUrl = findUrl(result && result.data, VIDEO_SPACE);
   if (!videoUrl) throw new Error("لم يُرجع نموذج الفيديو رابط فيديو. قد تكون خدمته غير متاحة أو تغيّر مخطط واجهته.");
   return videoUrl;
 }
-function showFinalVideo(blob, sessionId) {
+function showFinalVideoV2(blob, sessionId) {
   if (finalObjectURL) URL.revokeObjectURL(finalObjectURL);
   finalObjectURL = URL.createObjectURL(blob);
   $("finalVideo").src = finalObjectURL;
@@ -808,7 +806,7 @@ function showFinalVideo(blob, sessionId) {
   $("finalFileInfo").textContent = "ملف MP4 واحد · الحجم " + (blob.size / 1048576).toFixed(1) + " ميجابايت. اضغط تنزيل للاحتفاظ به.";
   $("finalArea").classList.remove("hidden");
 }
-async function mergeClips(clipsToMerge, aspect, quality) {
+async function mergeClipsV2(clipsToMerge, aspect, quality) {
   setStatus("اكتملت مشاهد القصة — تجهيز الدمج النهائي", "تم إنشاء المقاطع الفردية. الآن يجري تنزيلها وتركيب الصوت وتوحيد مقاس الفيديو داخل المتصفح.");
   setProgress(90,100,"المشاهد: 100% · تجهيز ملف واحد: 0%");
   const ffmpeg = await loadFFmpeg();
@@ -850,7 +848,7 @@ async function mergeClips(clipsToMerge, aspect, quality) {
   if (!blob.size) throw new Error("أنشأ الدمج ملفًا فارغًا.");
   return blob;
 }
-async function runFullWorkflow() {
+async function runFullWorkflowV2() {
   if (isBusy) return;
   const story = $("storyScript").value.trim();
   if (!story) { setStatus("اكتب السكريبت أولًا","اكتب القصة كاملة في المربع المخصص."); return; }
@@ -952,7 +950,7 @@ async function runFullWorkflow() {
     saveCurrentStoryToHistory(false);
   }
 }
-async function init() {
+async function initV2() {
   try {
     voiceProfile = await dbGet(VOICE_KEY);
     $("voiceSampleStatus").textContent = voiceProfile && voiceProfile.blob
@@ -1002,5 +1000,17 @@ async function init() {
   updateEstimate();
   setBusy(false);
 }
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded",init,{once:true});
+
+/* Activate the revised implementations only after every helper is defined. */
+setStatus = setStatusV2;
+setProgress = setProgressV2;
+setBusy = setBusyV2;
+synthesizeVoice = synthesizeVoiceV2;
+generateImage = generateImageV2;
+generateVideo = generateVideoV2;
+showFinalVideo = showFinalVideoV2;
+mergeClips = mergeClipsV2;
+runFullWorkflow = runFullWorkflowV2;
+init = initV2;
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
 else init();
