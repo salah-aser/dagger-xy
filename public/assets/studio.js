@@ -88,26 +88,13 @@ async function restoreClipAudioUrls(clips) {
 async function loadLocalFushaTTS() {
   if (!localNabraPromise) {
     localNabraPromise = (async function() {
-      let module = null;
-      let lastImportError = null;
-      const moduleUrls = [
-        "https://cdn.jsdelivr.net/npm/nabra-tts@0.1.0/+esm",
-        "https://esm.sh/nabra-tts@0.1.0?bundle"
-      ];
-      for (const moduleUrl of moduleUrls) {
-        try {
-          status("تحميل مكتبة الصوت العربية", "يجرب الموقع مصدر التحميل " + (moduleUrls.indexOf(moduleUrl)+1) + " من " + moduleUrls.length + ".");
-          module = await import(moduleUrl);
-          if (module && (module.NabraTTS || (module.default && module.default.NabraTTS))) break;
-          module = null;
-        } catch (importError) {
-          lastImportError = importError;
-          module = null;
-        }
-      }
-      if (!module) {
-        throw new Error("تعذر تحميل مكتبة Nabra من مصدري CDN. تأكد أن المتصفح لا يحجب jsDelivr أو esm.sh، ثم حاول مجددًا. التفاصيل: " +
-          String(lastImportError && lastImportError.message || lastImportError || "module unavailable"));
+      let module;
+      try {
+        status("تحميل محرك الصوت العربي المضمّن", "يحمّل الموقع مكتبة Nabra من ملف موجود على نفس استضافة الموقع؛ لم تعد المكتبة نفسها تعتمد على jsDelivr أو esm.sh.");
+        module = await import("./nabra-tts.bundle.js");
+      } catch (importError) {
+        throw new Error("تعذر تحميل ملف الصوت المضمّن من استضافة الموقع. افتح الصفحة بعد اكتمال النشر وتحقق من أن ملف public/assets/nabra-tts.bundle.js تم بناؤه. التفاصيل: " +
+          String(importError && importError.message || importError || "local bundle unavailable"));
       }
       const NabraTTS = module.NabraTTS || (module.default && module.default.NabraTTS);
       if (!NabraTTS || typeof NabraTTS.load !== "function") {
@@ -119,6 +106,7 @@ async function loadLocalFushaTTS() {
         device: "auto",
         cache: true,
         worker: false,
+        wasmPaths: new URL("./ort/", import.meta.url).href,
         numThreads: 1,
         onProgress: function(progress) {
           if (progress && progress.total) {
