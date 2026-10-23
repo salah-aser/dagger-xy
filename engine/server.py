@@ -739,6 +739,8 @@ async def workflow_status():
 
 @app.get("/api/files/{job_id}/{filename}", dependencies=[Depends(require_auth)])
 async def protected_file(job_id: str, filename: str):
+    if not re.fullmatch(r"[a-f0-9]{16}", job_id):
+        raise HTTPException(404, "الملف غير موجود.")
     job_dir = (OUTPUTS / job_id).resolve()
     target = (job_dir / Path(filename).name).resolve()
     if not target.is_relative_to(job_dir) or not target.is_file():
