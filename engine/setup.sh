@@ -47,7 +47,7 @@ PY
   echo "Generated a private API_TOKEN and saved it in engine/.env. Do not share or commit this file."
 fi
 
-if [[ "\${1:-}" != "--skip-model-download" ]]; then
+if [[ "${1:-}" != "--skip-model-download" ]]; then
   echo "Downloading official Wan 2.2 model weights. This is tens of GB; check disk space and bandwidth."
   bash ./download_wan22_14b.sh
 else
