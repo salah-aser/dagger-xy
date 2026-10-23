@@ -37,6 +37,7 @@ jobs:
           printf '%s\n' 'export { NabraTTS } from "./dist/index.js";' > "$RUNNER_TEMP/salah-nabra/entry.js"
           "$RUNNER_TEMP/salah-nabra/node_modules/.bin/esbuild" "$RUNNER_TEMP/salah-nabra/entry.js" --bundle --format=esm --platform=browser --target=es2022 --external:node:* --external:fs --external:path --external:module --external:url --external:worker_threads --external:crypto --outfile=public/assets/nabra-tts.bundle.js
           cp "$RUNNER_TEMP/salah-nabra/node_modules/onnxruntime-web/dist/"*.wasm public/assets/ort/
+          cp "$RUNNER_TEMP/salah-nabra/node_modules/onnxruntime-web/dist/"*.mjs public/assets/ort/
           cp "$RUNNER_TEMP/salah-nabra/LICENSE" public/assets/NABRA-LICENSE.txt
           cp "$RUNNER_TEMP/salah-nabra/THIRD_PARTY_NOTICES.md" public/assets/NABRA-THIRD-PARTY-NOTICES.md
       - name: Configure GitHub Pages
