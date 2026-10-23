@@ -200,8 +200,11 @@ def make_prompt(scene: str, req: dict[str, Any], index: int, total: int) -> str:
     return ". ".join(rules)
 
 
+DEFAULT_WORKFLOW_PATH = ROOT / "workflows" / "wan22_t2v_blueprint.json"
+
+
 def workflow_ready() -> bool:
-    return WORKFLOW_PATH.exists()
+    return WORKFLOW_PATH.exists() or DEFAULT_WORKFLOW_PATH.exists()
 
 
 async def comfy_health() -> dict[str, Any]:
@@ -227,69 +230,482 @@ async def object_info() -> dict[str, Any]:
         return response.json()
 
 
-def graph_to_api(graph: dict[str, Any], info: dict[str, Any]) -> dict[str, Any]:
-    """Convert a classic ComfyUI UI graph into API prompt format."""
+def graph_to_api(
+    graph: dict[str, Any],
+    info: dict[str, Any],
+    external_values: dict[str, Any] | None = None,
+    external_link_ids: dict[int, str] | None = None,
+) -> dict[str, Any]:
+    """Convert an API prompt, classic Comfy graph, or Comfy blueprint with embedded subgraphs."""
     if isinstance(graph, dict) and graph and all(isinstance(v, dict) and "class_type" in v for v in graph.values()):
-        return graph
+        return json.loads(json.dumps(graph))
+
     nodes = graph.get("nodes")
     links = graph.get("links")
     if not isinstance(nodes, list) or not isinstance(links, list):
         raise ValueError("ملف سير العمل يجب أن يكون ComfyUI API JSON أو رسم ComfyUI عادي.")
+
+    definitions = graph.get("definitions") or {}
+    subgraphs = definitions.get("subgraphs") or []
+    subgraph_by_id = {
+        str(item.get("id")): item for item in subgraphs
+        if isinstance(item, dict) and item.get("id") is not None
+    }
+    for outer_node in nodes:
+        if not isinstance(outer_node, dict):
+            continue
+        subgraph = subgraph_by_id.get(str(outer_node.get("type")))
+        if subgraph:
+            outer_widgets = list(outer_node.get("widgets_values") or [])
+            values: dict[str, Any] = {}
+            ext_links: dict[int, str] = {}
+            for index, ext in enumerate(subgraph.get("inputs") or []):
+                name = str(ext.get("name", ""))
+                if name and index < len(outer_widgets):
+                    values[name] = outer_widgets[index]
+                for link_id in ext.get("linkIds") or []:
+                    ext_links[int(link_id)] = name
+            # A saved blueprint may have values assigned to the group's inputs rather than widgets.
+            for idx, slot in enumerate(outer_node.get("inputs") or []):
+                name = str(slot.get("name") or slot.get("label") or "")
+                if name and slot.get("link") is None and idx < len(outer_widgets):
+                    values[name] = outer_widgets[idx]
+            return graph_to_api(subgraph, info, values, ext_links)
+
+    external_values = external_values or {}
+    external_link_ids = external_link_ids or {}
     link_map: dict[int, tuple[str, int]] = {}
     for link in links:
-        if isinstance(link, list) and len(link) >= 5:
+        if isinstance(link, dict):
+            try:
+                link_map[int(link["id"])] = (str(link["origin_id"]), int(link["origin_slot"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+        elif isinstance(link, list) and len(link) >= 5:
             link_map[int(link[0])] = (str(link[1]), int(link[2]))
+
     result: dict[str, Any] = {}
     for node in nodes:
         if not isinstance(node, dict) or node.get("type") not in info:
             continue
-        class_type = node["type"]
+        class_type = str(node["type"])
         schema = info[class_type].get("input", {})
         widgets = list(node.get("widgets_values") or [])
-        connected: dict[str, list[Any]] = {}
-        for inp in node.get("inputs", []):
+        api_inputs: dict[str, Any] = {}
+        connected: set[str] = set()
+        for inp in node.get("inputs", []) or []:
+            name = str(inp.get("name", ""))
             link_id = inp.get("link")
-            if link_id is not None and int(link_id) in link_map:
-                src, slot = link_map[int(link_id)]
-                connected[inp["name"]] = [src, slot]
-        api_inputs = dict(connected)
-        widget_idx = 0
+            if not name or link_id is None:
+                continue
+            try:
+                link_id = int(link_id)
+            except (TypeError, ValueError):
+                continue
+            if link_id in external_link_ids:
+                ext_name = external_link_ids[link_id]
+                if ext_name in external_values:
+                    api_inputs[name] = external_values[ext_name]
+                    connected.add(name)
+            elif link_id in link_map:
+                src, slot = link_map[link_id]
+                api_inputs[name] = [src, slot]
+                connected.add(name)
+
         schema_names: list[str] = []
         for key in ("required", "optional"):
             values = schema.get(key, {})
             if isinstance(values, dict):
                 schema_names.extend(values.keys())
+        widget_idx = 0
         for name in schema_names:
             if name in connected:
                 continue
-            # Widget values follow the node's remaining unconnected inputs.
             if widget_idx < len(widgets):
                 api_inputs[name] = widgets[widget_idx]
                 widget_idx += 1
+
         properties = node.get("properties") or {}
         title = node.get("title") or properties.get("Node name for S&R") or class_type
-        result[str(node["id"])] = {"class_type": class_type, "inputs": api_inputs, "_meta": {"title": str(title)}}
+        result[str(node["id"])] = {
+            "class_type": class_type,
+            "inputs": api_inputs,
+            "_meta": {"title": str(title)},
+        }
+
     if not result:
         raise ValueError("لم يتم العثور على عقد ComfyUI قابلة للتنفيذ في سير العمل.")
     return result
 
 
 async def get_workflow() -> dict[str, Any]:
-    if not WORKFLOW_PATH.exists():
-        raise RuntimeError("لم يتم إعداد سير عمل ComfyUI بعد. افتح إعداد سير العمل في لوحة Salah Cloud وارفع ملف API JSON من ComfyUI.")
-    raw = json.loads(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    # A user-uploaded workflow overrides the official bundled default.
+    source = WORKFLOW_PATH if WORKFLOW_PATH.exists() else DEFAULT_WORKFLOW_PATH
+    if not source.exists():
+        raise RuntimeError("قالب Wan 2.2 الافتراضي غير موجود، ولم يتم رفع سير عمل بديل.")
+    raw = json.loads(source.read_text(encoding="utf-8"))
     info = await object_info()
     workflow = graph_to_api(raw, info)
+    return ensure_video_saver(workflow)
+
+
+def ensure_video_saver(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Append a SaveVideo node to workflows which only return a VIDEO output."""
+    if any(node.get("class_type") in {"SaveVideo", "VHS_VideoCombine"} for node in workflow.values() if isinstance(node, dict)):
+        return workflow
+    create_nodes = [
+        (str(node_id), node)
+        for node_id, node in workflow.items()
+        if isinstance(node, dict) and node.get("class_type") == "CreateVideo"
+    ]
+    if not create_nodes:
+        raise ValueError("سير عمل Wan يجب أن يحتوي على عقدة CreateVideo أو SaveVideo.")
+    node_id, _ = create_nodes[-1]
+    numeric_ids = [int(k) for k in workflow if str(k).isdigit()]
+    saver_id = str(max(numeric_ids, default=0) + 1)
+    workflow[saver_id] = {
+        "class_type": "SaveVideo",
+        "inputs": {
+            "video": [node_id, 0],
+            "filename_prefix": "salah/output",
+            "format": "auto",
+            "codec": "auto",
+        },
+        "_meta": {"title": "Salah Cloud Save Video"},
+    }
     return workflow
 
 
-def patch_workflow(base: dict[str, Any], prompt: str, req: dict[str, Any], scene_num: int, job_id: str) -> dict[str, Any]:
+async def queue_comfy(workflow: dict[str, Any]) -> str:
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.post(f"{COMFY_URL}/prompt", json={"prompt": workflow, "client_id": "salah-cloud"})
+        if response.status_code >= 400:
+            raise RuntimeError("ComfyUI رفض سير العمل: " + response.text[:900])
+        data = response.json()
+        if not data.get("prompt_id"):
+            raise RuntimeError("ComfyUI لم يُرجع prompt_id: " + json.dumps(data, ensure_ascii=False)[:500])
+        return str(data["prompt_id"])
+
+
+async def wait_for_comfy(prompt_id: str, timeout: int = COMFY_TIMEOUT) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    async with httpx.AsyncClient(timeout=20) as client:
+        while time.monotonic() < deadline:
+            response = await client.get(f"{COMFY_URL}/history/{prompt_id}")
+            if response.status_code == 200:
+                data = response.json()
+                if prompt_id in data:
+                    return data[prompt_id]
+                if data:
+                    return next(iter(data.values()))
+            await asyncio.sleep(3)
+    raise TimeoutError("انتهت مهلة توليد الفيديو. تحقق من ذاكرة GPU وحالة ComfyUI ثم أعد المحاولة.")
+
+
+def collect_video_ref(history: dict[str, Any]) -> dict[str, str]:
+    outputs = history.get("outputs", {})
+    for node in outputs.values():
+        if not isinstance(node, dict):
+            continue
+        for key in ("videos", "gifs", "files"):
+            for item in node.get(key, []) or []:
+                if not isinstance(item, dict):
+                    continue
+                filename = item.get("filename") or item.get("name")
+                if filename and Path(filename).suffix.lower() in {".mp4", ".webm", ".mov", ".mkv"}:
+                    return {"filename": filename, "subfolder": item.get("subfolder", ""), "type": item.get("type", "output")}
+    raise RuntimeError("انتهى ComfyUI من المعالجة لكنه لم يُرجع ملف فيديو. تأكد أن سير العمل يحتوي على عقدة SaveVideo.")
+
+
+async def download_comfy_file(ref: dict[str, str], destination: Path) -> None:
+    params = {"filename": ref["filename"], "subfolder": ref.get("subfolder", ""), "type": ref.get("type", "output")}
+    async with httpx.AsyncClient(timeout=180) as client:
+        async with client.stream("GET", f"{COMFY_URL}/view", params=params) as response:
+            response.raise_for_status()
+            with destination.open("wb") as f:
+                async for chunk in response.aiter_bytes(1024 * 1024):
+                    f.write(chunk)
+    if not destination.exists() or destination.stat().st_size < 1000:
+        raise RuntimeError("ملف الفيديو الناتج فارغ أو غير مكتمل.")
+
+
+async def create_voice(text: str, language: str, provider: str, target: Path) -> None:
+    if provider == "edge":
+        # Edge TTS is online: the text is sent to Microsoft's service. Use only with explicit user choice.
+        try:
+            import edge_tts
+        except ImportError as exc:
+            raise RuntimeError("اختير الصوت السحابي لكن مكتبة edge-tts غير مثبتة.") from exc
+        voice = {"ar": "ar-SA-HamedNeural", "ar-EG": "ar-EG-ShakirNeural", "en": "en-US-GuyNeural"}.get(language, "ar-SA-HamedNeural")
+        communicate = edge_tts.Communicate(text, voice)
+        await communicate.save(str(target))
+        return
+    # Fully local, free voice; quality is intentionally described as basic and can be robotic.
+    voice_code = "en" if language == "en" else "ar"
+    executable = shutil.which("espeak-ng") or shutil.which("espeak")
+    if not executable:
+        raise RuntimeError("محرك الصوت المحلي espeak-ng غير مثبت. أعد بناء حاوية engine أو اختر الصوت السحابي من الواجهة.")
+    process = await asyncio.create_subprocess_exec(
+        executable, "-v", voice_code, "-s", "145", "-w", str(target), text,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    _, stderr = await process.communicate()
+    if process.returncode != 0 or not target.exists() or target.stat().st_size < 500:
+        raise RuntimeError("فشل توليد الصوت المحلي: " + stderr.decode("utf-8", "ignore")[:500])
+
+
+async def mux_video(raw_video: Path, audio: Path, final_video: Path) -> None:
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        raise RuntimeError("FFmpeg/FFprobe غير موجودين في حاوية السيرفر.")
+    probe = await asyncio.create_subprocess_exec(
+        ffprobe, "-v", "error", "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1", str(audio),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    out, _ = await probe.communicate()
+    try:
+        duration = max(1.0, float(out.decode().strip()))
+    except Exception:
+        duration = 15.0
+    # This is voice-over. It does not invent lip-sync. If the generated video is shorter than the voice,
+    # it loops visually until the narration ends; a true audio-driven workflow should be installed for lip-sync.
+    command = [
+        ffmpeg, "-y", "-stream_loop", "-1", "-i", str(raw_video), "-i", str(audio),
+        "-t", str(duration), "-map", "0:v:0", "-map", "1:a:0",
+        "-vf", "fps=24,format=yuv420p", "-c:v", "libx264", "-preset", "veryfast", "-crf", "27",
+        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(final_video)
+    ]
+    process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    _, stderr = await process.communicate()
+    if process.returncode != 0 or not final_video.exists() or final_video.stat().st_size < 1000:
+        raise RuntimeError("فشل تركيب الصوت والفيديو: " + stderr.decode("utf-8", "ignore")[-900:])
+
+
+def save_scenes(job_id: str, scenes: list[dict[str, Any]]) -> None:
+    update_job(job_id, scenes_json=scenes)
+
+
+async def run_job(job_id: str, resume: bool = False) -> None:
+    lock = JOB_LOCKS.setdefault(job_id, asyncio.Lock())
+    if lock.locked():
+        return
+    async with lock:
+        job = read_job(job_id)
+        req = job["request"]
+        scenes = job["scenes"]
+        outdir = OUTPUTS / job_id
+        outdir.mkdir(parents=True, exist_ok=True)
+        try:
+            health = await comfy_health()
+            if not health["online"]:
+                raise RuntimeError("سيرفر ComfyUI غير متصل. تأكد أن حاوية GPU تعمل وأن COMFYUI_URL صحيح.")
+            base_workflow = await get_workflow()
+            update_job(job_id, status="running", stage="preparing", error="")
+            total = max(1, len(scenes))
+            for index, scene in enumerate(scenes):
+                # If a complete MP4 already exists, keep it during retries.
+                final_path = outdir / f"scene-{index + 1:03d}.mp4"
+                audio_path = outdir / f"scene-{index + 1:03d}.mp3"
+                raw_path = outdir / f"scene-{index + 1:03d}-raw.mp4"
+                if resume and final_path.exists() and final_path.stat().st_size > 1000:
+                    scene["status"] = "completed"
+                    scene["video_url"] = f"/api/files/{job_id}/{final_path.name}"
+                    continue
+                scene["status"] = "voice"
+                scene["progress"] = 0
+                save_scenes(job_id, scenes)
+                update_job(job_id, stage=f"scene-{index + 1}-voice", progress=round(100 * index / total), scenes_json=scenes)
+                await create_voice(scene["text"], req["language"], req["voice_provider"], audio_path)
+                scene["audio_url"] = f"/api/files/{job_id}/{audio_path.name}"
+                scene["status"] = "queued_video"
+                save_scenes(job_id, scenes)
+                update_job(job_id, stage=f"scene-{index + 1}-video", progress=round(100 * (index + 0.15) / total), scenes_json=scenes)
+                prompt = make_prompt(scene["text"], req, index, total)
+                workflow = patch_workflow(base_workflow, prompt, req, index, job_id)
+                prompt_id = await queue_comfy(workflow)
+                scene["comfy_prompt_id"] = prompt_id
+                scene["status"] = "rendering_video"
+                save_scenes(job_id, scenes)
+                update_job(job_id, stage=f"scene-{index + 1}-rendering", progress=round(100 * (index + 0.25) / total), scenes_json=scenes)
+                history = await wait_for_comfy(prompt_id)
+                ref = collect_video_ref(history)
+                await download_comfy_file(ref, raw_path)
+                scene["raw_video_url"] = f"/api/files/{job_id}/{raw_path.name}"
+                scene["status"] = "muxing_audio"
+                save_scenes(job_id, scenes)
+                update_job(job_id, stage=f"scene-{index + 1}-muxing", progress=round(100 * (index + 0.85) / total), scenes_json=scenes)
+                await mux_video(raw_path, audio_path, final_path)
+                scene["status"] = "completed"
+                scene["progress"] = 100
+                scene["video_url"] = f"/api/files/{job_id}/{final_path.name}"
+                save_scenes(job_id, scenes)
+                update_job(job_id, stage=f"scene-{index + 1}-done", progress=round(100 * (index + 1) / total), scenes_json=scenes)
+            # Concatenate the successful scene files in order.
+            clips = [outdir / f"scene-{i + 1:03d}.mp4" for i in range(total) if (outdir / f"scene-{i + 1:03d}.mp4").exists()]
+            if clips:
+                list_file = outdir / "concat.txt"
+                list_file.write_text("".join("file '" + str(path).replace("'", "'\\''") + "'\n" for path in clips), encoding="utf-8")
+                final_path = outdir / "Salah-Web-Story.mp4"
+                ffmpeg = shutil.which("ffmpeg")
+                proc = await asyncio.create_subprocess_exec(
+                    ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
+                    "-c", "copy", "-movflags", "+faststart", str(final_path),
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
+                _, err = await proc.communicate()
+                if proc.returncode != 0 or not final_path.exists() or final_path.stat().st_size < 1000:
+                    raise RuntimeError("اكتملت مقاطع، لكن فشل دمج MP4 النهائي: " + err.decode("utf-8", "ignore")[-500:])
+                update_job(job_id, status="completed", stage="completed", progress=100, final_file=f"{job_id}/{final_path.name}", scenes_json=scenes, error="")
+            else:
+                raise RuntimeError("لم يكتمل أي مشهد.")
+        except Exception as exc:
+            current = read_job(job_id)
+            update_job(job_id, status="partial" if any(s.get("status") == "completed" for s in current["scenes"]) else "failed",
+                       stage="failed", error=str(exc)[:1600], scenes_json=current["scenes"])
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    with get_db() as db:
+        rows = db.execute("SELECT id FROM jobs WHERE status='running'").fetchall()
+        for row in rows:
+            db.execute("UPDATE jobs SET status='partial', stage='server-restarted', error=?, updated_at=? WHERE id=?",
+                       ("أعيد تشغيل السيرفر. النتائج المكتملة محفوظة؛ استخدم «استكمال» للمتابعة.", now_iso(), row["id"]))
+    yield
+
+
+app = FastAPI(title="Salah Cloud Engine", version="0.1.0", lifespan=lifespan)
+cors_origins = [item.strip() for item in os.getenv("CORS_ORIGINS", "https://salah-aser.github.io,http://localhost:8000,http://127.0.0.1:8000").split(",") if item.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+
+@app.get("/", response_class=HTMLResponse)
+async def home():
+    return HTMLResponse((STATIC / "index.html").read_text(encoding="utf-8"))
+
+
+@app.get("/api/health")
+async def health():
+    comfy = await comfy_health()
+    return {
+        "service": "Salah Cloud Engine",
+        "api": "online",
+        "comfyui": comfy,
+        "workflow_configured": workflow_ready(),
+        "tts_provider_default": TTS_PROVIDER,
+        "gpu_requirement": "Video generation requires an NVIDIA GPU with enough VRAM; this API does not create free GPU capacity."
+    }
+
+
+@app.get("/api/jobs", dependencies=[Depends(require_auth)])
+async def list_jobs():
+    with get_db() as db:
+        rows = db.execute("SELECT * FROM jobs ORDER BY updated_at DESC LIMIT 50").fetchall()
+    return [row_to_job(row) for row in rows]
+
+
+@app.get("/api/jobs/{job_id}", dependencies=[Depends(require_auth)])
+async def job_status(job_id: str):
+    return read_job(job_id)
+
+
+@app.post("/api/jobs", dependencies=[Depends(require_auth)])
+async def create_job(payload: CreateJob):
+    try:
+        parts = split_script(payload.script, payload.target_minutes)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if not parts:
+        raise HTTPException(400, "اكتب نص القصة أولًا.")
+    job_id = uuid.uuid4().hex[:16]
+    title = payload.title.strip() or "قصة " + payload.script.strip().splitlines()[0][:70]
+    req = payload.model_dump()
+    scenes = [
+        {"id": i + 1, "text": part, "status": "queued", "progress": 0, "audio_url": None, "video_url": None, "error": ""}
+        for i, part in enumerate(parts)
+    ]
+    with get_db() as db:
+        db.execute("""INSERT INTO jobs(id,title,status,progress,stage,script,request_json,scenes_json,error,created_at,updated_at,final_file)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   (job_id, title, "queued", 0, "queued", payload.script, json.dumps(req, ensure_ascii=False),
+                    json.dumps(scenes, ensure_ascii=False), "", now_iso(), now_iso(), ""))
+    ACTIVE_TASKS[job_id] = asyncio.create_task(run_job(job_id))
+    return read_job(job_id)
+
+
+@app.post("/api/jobs/{job_id}/resume", dependencies=[Depends(require_auth)])
+async def resume_job(job_id: str):
+    job = read_job(job_id)
+    if job["status"] == "running":
+        raise HTTPException(409, "المشروع قيد التنفيذ بالفعل.")
+    ACTIVE_TASKS[job_id] = asyncio.create_task(run_job(job_id, resume=True))
+    update_job(job_id, status="queued", stage="resume", error="")
+    return read_job(job_id)
+
+
+@app.post("/api/workflow", dependencies=[Depends(require_auth)])
+async def upload_workflow(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.lower().endswith(".json"):
+        raise HTTPException(400, "ارفع ملف JSON لسير عمل ComfyUI.")
+    raw = await file.read(25 * 1024 * 1024 + 1)
+    if len(raw) > 25 * 1024 * 1024:
+        raise HTTPException(413, "ملف سير العمل أكبر من 25 ميجابايت.")
+    try:
+        parsed = json.loads(raw)
+    except Exception as exc:
+        raise HTTPException(400, "ملف JSON غير صالح.") from exc
+    if not isinstance(parsed, dict):
+        raise HTTPException(400, "صيغة سير العمل يجب أن تكون كائن JSON.")
+    WORKFLOW_PATH.write_text(json.dumps(parsed, ensure_ascii=False), encoding="utf-8")
+    return {"ok": True, "message": "تم حفظ سير العمل على السيرفر.", "workflow_configured": True}
+
+
+@app.get("/api/workflow/status", dependencies=[Depends(require_auth)])
+async def workflow_status():
+    source = WORKFLOW_PATH if WORKFLOW_PATH.exists() else DEFAULT_WORKFLOW_PATH
+    source_name = "uploaded custom workflow" if WORKFLOW_PATH.exists() else "bundled official Wan 2.2 blueprint"
+    if not source.exists():
+        return {"configured": False, "message": "لم يُعثر على القالب الافتراضي ولم يتم رفع قالب بديل."}
+    try:
+        info = await object_info()
+        base = json.loads(source.read_text(encoding="utf-8"))
+        normalized = graph_to_api(base, info)
+        normalized = ensure_video_saver(normalized)
+        return {"configured": True, "source": source_name, "nodes": len(normalized), "message": "تم تحميل سير العمل الافتراضي أو المخصص بنجاح من ComfyUI."}
+    except Exception as exc:
+        return {"configured": False, "source": source_name, "message": str(exc)[:800]}
+
+
+@app.get("/api/files/{job_id}/{filename}", dependencies=[Depends(require_auth)])
+async def protected_file(job_id: str, filename: str):
+    job_dir = OUTPUTS / job_id
+    target = (job_dir / Path(filename).name).resolve()
+    if not target.is_relative_to(job_dir.resolve()) or not target.is_file():
+        raise HTTPException(404, "الملف غير موجود.")
+    return FileResponse(target)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("server:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")))def patch_workflow(base: dict[str, Any], prompt: str, req: dict[str, Any], scene_num: int, job_id: str) -> dict[str, Any]:
     wf = json.loads(json.dumps(base))
     aspect = req.get("aspect_ratio", "9:16")
     width, height = (480, 854) if aspect == "9:16" else ((854, 480) if aspect == "16:9" else (640, 640))
-    width = int(req.get("width") or width)
-    height = int(req.get("height") or height)
-    frames = int(req.get("frames") or 81)
+    width = max(320, min(1280, int(req.get("width") or width)))
+    height = max(320, min(1280, int(req.get("height") or height)))
+    # Wan latent dimensions should be divisible by 16.
+    width = max(320, (width // 16) * 16)
+    height = max(320, (height // 16) * 16)
+    frames = max(25, min(241, int(req.get("frames") or 81)))
     seed_base = int(req.get("seed") or secrets.randbelow(2**31 - 1))
     for node in wf.values():
         if not isinstance(node, dict):
@@ -310,9 +726,9 @@ def patch_workflow(base: dict[str, Any], prompt: str, req: dict[str, Any], scene
                 inputs[key] = height
             elif low in {"length", "frames", "num_frames"}:
                 inputs[key] = frames
-            elif low in {"filename_prefix"}:
+            elif low == "filename_prefix":
                 inputs[key] = f"salah/{job_id}/scene-{scene_num + 1:03d}"
-    return wf
+    return ensure_video_saver(wf)
 
 
 async def queue_comfy(workflow: dict[str, Any]) -> str:
