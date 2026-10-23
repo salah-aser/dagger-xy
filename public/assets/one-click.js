@@ -1038,8 +1038,6 @@ showFinalVideo = showFinalVideoV2;
 mergeClips = mergeClipsV2;
 runFullWorkflow = runFullWorkflowV2;
 init = initV2;
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
-else init();
 
 
 /* Quota-aware connection and narration chunks aligned to natural Arabic punctuation. */
