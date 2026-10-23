@@ -25,6 +25,98 @@ let imageClient = null;
 let videoClient = null;
 let ffmpeg = null;
 let finalObjectUrl = null;
+
+let localNabraPromise = null;
+const localAudioUrls = new Set();
+const MEDIA_DB = "salah-web-generated-media-v1";
+const MEDIA_STORE = "clips";
+function openMediaDb() {
+  return new Promise(function(resolve,reject) {
+    const request = indexedDB.open(MEDIA_DB,1);
+    request.onupgradeneeded = function() {
+      if (!request.result.objectStoreNames.contains(MEDIA_STORE)) request.result.createObjectStore(MEDIA_STORE);
+    };
+    request.onsuccess = function() { resolve(request.result); };
+    request.onerror = function() { reject(request.error || new Error("تعذر فتح التخزين المحلي للصوت.")); };
+  });
+}
+async function saveMediaBlob(key, blob) {
+  const db = await openMediaDb();
+  return new Promise(function(resolve,reject) {
+    const tx = db.transaction(MEDIA_STORE,"readwrite");
+    tx.objectStore(MEDIA_STORE).put(blob,key);
+    tx.oncomplete = function() { db.close(); resolve(true); };
+    tx.onerror = function() { db.close(); reject(tx.error || new Error("تعذر حفظ ملف الصوت.")); };
+    tx.onabort = function() { db.close(); reject(tx.error || new Error("أُلغي حفظ ملف الصوت.")); };
+  });
+}
+async function readMediaBlob(key) {
+  const db = await openMediaDb();
+  return new Promise(function(resolve,reject) {
+    const tx = db.transaction(MEDIA_STORE,"readonly");
+    const request = tx.objectStore(MEDIA_STORE).get(key);
+    request.onsuccess = function() { const value = request.result || null; db.close(); resolve(value); };
+    request.onerror = function() { db.close(); reject(request.error || new Error("تعذر استرجاع ملف الصوت.")); };
+  });
+}
+async function restoreClipAudioUrls(clips) {
+  await Promise.all((clips || []).map(async function(clip) {
+    if (!clip.audioKey) return;
+    try {
+      const blob = await readMediaBlob(clip.audioKey);
+      if (blob && activeClips.indexOf(clip) >= 0) {
+        if (clip.audioUrl && clip.audioUrl.startsWith("blob:")) URL.revokeObjectURL(clip.audioUrl);
+        clip.audioUrl = URL.createObjectURL(blob);
+        localAudioUrls.add(clip.audioUrl);
+        drawClip(clip);
+      }
+    } catch (_) {}
+  }));
+}
+async function loadLocalFushaTTS() {
+  if (!localNabraPromise) {
+    localNabraPromise = import("https://cdn.jsdelivr.net/npm/nabra-tts@0/+esm").then(async function(module) {
+      const NabraTTS = module.NabraTTS || (module.default && module.default.NabraTTS);
+      if (!NabraTTS || typeof NabraTTS.load !== "function") {
+        throw new Error("لم تتوفر مكتبة NabraTTS من CDN.");
+      }
+      status("تجهيز محرك الصوت العربي المحلي", "يجري تنزيل نموذج Nabra العربي المفتوح المصدر لأول مرة (حوالي 16–30 ميجابايت حسب النسخة). سيُخزّن في ذاكرة المتصفح لتقليل التنزيلات اللاحقة.");
+      const tts = await withTimeout(NabraTTS.load({
+        dtype: "fp16",
+        device: "auto",
+        cache: true,
+        numThreads: 1,
+        onProgress: function(progress) {
+          if (progress && progress.total) {
+            status("تحميل محرك الصوت المحلي " + Math.round(100 * progress.loaded / progress.total) + "%",
+              "تنزيل ملفات نموذج Nabra للفصحى. بعد اكتمال التحميل سيعمل الصوت من جهازك دون حصة ZeroGPU.");
+          }
+        }
+      }), 240000, "تحميل نموذج الصوت العربي المحلي");
+      return tts;
+    }).catch(function(err) {
+      localNabraPromise = null;
+      throw err;
+    });
+  }
+  return localNabraPromise;
+}
+async function makeLocalFushaAudio(scene, speed) {
+  const tts = await loadLocalFushaTTS();
+  status("المشهد " + scene.id + " — توليد الصوت على جهازك",
+    "يعمل نموذج Nabra محليًا داخل المتصفح؛ لن تُرسل جملة التعليق الصوتي إلى خدمة صوت خارجية.");
+  const synthesized = await withTimeout(tts.generate(scene.narration,{speed:Number(speed || 1)}),120000,"توليد الصوت العربي المحلي");
+  if (!synthesized || !synthesized.audio) throw new Error("نموذج Nabra لم يُرجع بيانات صوتية.");
+  const blob = tts.toWav(synthesized.audio);
+  if (!(blob instanceof Blob) || !blob.size) throw new Error("لم ينتج نموذج Nabra ملف WAV صالحًا.");
+  const key = (activeId || "project") + ":scene:" + scene.id + ":audio-v1";
+  try { await saveMediaBlob(key,blob); } catch (err) {
+    status("تم توليد الصوت لكن تعذر حفظه محليًا", "سيعمل الصوت في هذه الجلسة، لكن إعادة فتح القصة قد تتطلب توليده من جديد.");
+  }
+  const url = URL.createObjectURL(blob);
+  localAudioUrls.add(url);
+  return {url:url,key:key};
+}
 let activeClips = [];
 let activeScenes = [];
 const cardByScene = new Map();
@@ -223,6 +315,7 @@ function switchProject(id) {
     activeClips.push(c);
     drawClip(c);
   });
+  restoreClipAudioUrls(activeClips);
   if (p.statusTitle) {
     $("statusBox").classList.remove("hidden");
     $("statusTitle").textContent = p.statusTitle;
@@ -514,28 +607,23 @@ function updateClip(scene, patch) {
   if (p) {
     p.clips = activeClips.map(function(x) { return {
       id:x.id,narration:x.narration,stage:x.stage,audioUrl:x.audioUrl||null,imageUrl:x.imageUrl||null,
-      videoUrl:x.videoUrl||null,error:x.error||null
+      videoUrl:x.videoUrl||null,audioKey:x.audioKey||null,error:x.error||null
     };});
     saveProjects();
   }
 }
 async function createNarration(scene, language, speed) {
-  status("المشهد " + scene.id + " — جاري توليد الصوت", language === "fusha"
-    ? "صوت عربي فصيح عبر Nabra، النموذج المخصص للفصحى."
-    : language === "egyptian" ? "صوت باللهجة المصرية عبر VoiceTut-TTS." : "صوت إنجليزي عبر VoiceTut-TTS.");
-  let client, result, url;
   if (language === "fusha") {
-    client = await withTimeout(clientForVoice("fusha"),45000,"الاتصال بنموذج الفصحى");
-    result = await withTimeout(client.predict("/synthesize",[scene.narration,Number(speed||1)]),180000,"توليد الصوت بالفصحى");
-    url = findAssetUrl(result && result.data && result.data[0],"fusha");
-  } else {
-    const lang = language === "english" ? "en" : "arz";
-    client = await withTimeout(clientForVoice(language),45000,"الاتصال بنموذج الصوت");
-    result = await withTimeout(client.predict("/synthesize",[scene.narration,lang,"preset","Ahmed",null,"",32,2.0,Number(speed||1),true]),180000,"توليد الصوت");
-    url = findAssetUrl(result && result.data && result.data[0],language);
+    return await makeLocalFushaAudio(scene,speed);
   }
+  status("المشهد " + scene.id + " — جاري توليد الصوت",
+    language === "egyptian" ? "صوت باللهجة المصرية عبر VoiceTut-TTS؛ الحصة العامة قد تكون محدودة." : "صوت إنجليزي عبر VoiceTut-TTS؛ الحصة العامة قد تكون محدودة.");
+  const lang = language === "english" ? "en" : "arz";
+  const client = await withTimeout(clientForVoice(language),45000,"الاتصال بنموذج الصوت");
+  const result = await withTimeout(client.predict("/synthesize",[scene.narration,lang,"preset","Ahmed",null,"",32,2.0,Number(speed||1),true]),180000,"توليد الصوت");
+  const url = findAssetUrl(result && result.data && result.data[0],language);
   if (!url) throw new Error("خدمة الصوت لم تُرجع ملفًا صوتيًا قابلًا للتشغيل.");
-  return url;
+  return {url:url,key:null};
 }
 async function createHordeStill(scene, dimensions) {
   const base = "https://aihorde.net/api/v2";
@@ -721,11 +809,12 @@ async function createFullVideo() {
   const p=activeProject();
   // Preserve completed assets from the last attempt; a quota failure should not force new audio/image calls.
   const previousClips = Array.isArray(p.clips) ? p.clips.map(function(c) {
-    return {id:c.id,narration:c.narration,stage:c.stage,audioUrl:c.audioUrl||null,imageUrl:c.imageUrl||null,videoUrl:c.videoUrl||null,error:c.error||null};
+    return {id:c.id,narration:c.narration,stage:c.stage,audioUrl:c.audioUrl||null,imageUrl:c.imageUrl||null,videoUrl:c.videoUrl||null,audioKey:c.audioKey||null,error:c.error||null};
   }) : [];
   setBusy(true);
   clearResults();
   activeClips = previousClips.slice();
+  await restoreClipAudioUrls(activeClips);
   activeClips.forEach(function(c){drawClip(c);});
   p.status="running";p.progress=0;p.finalUrl="";p.statusTitle="بدأ الإنتاج / استكمال المشاهد";
   p.statusDetail="سيعيد استخدام الأصوات والصور والفيديوهات المكتملة سابقًا ما دامت روابطها ما زالت صالحة.";
@@ -741,7 +830,7 @@ async function createFullVideo() {
   $("results").replaceChildren();
   cardByScene.clear();
   activeClips.forEach(function(c){drawClip(c);});
-  p.clips=activeClips.map(function(c){return {id:c.id,narration:c.narration,stage:c.stage,audioUrl:c.audioUrl||null,imageUrl:c.imageUrl||null,videoUrl:c.videoUrl||null,error:c.error||null};});
+  p.clips=activeClips.map(function(c){return {id:c.id,narration:c.narration,stage:c.stage,audioUrl:c.audioUrl||null,imageUrl:c.imageUrl||null,videoUrl:c.videoUrl||null,audioKey:c.audioKey||null,error:c.error||null};});
   saveProjects();renderHistory();
   if (!scenes.length) { setBusy(false);status("لم يتم العثور على مشاهد","أدخل نصًا يحتوي على كلام.");return; }
   setProgress(0,"تقسيم القصة إلى " + scenes.length + " مشهدًا");
@@ -753,14 +842,27 @@ async function createFullVideo() {
       let saved = activeClips.find(function(c){return c.id===scene.id && c.narration===scene.narration;}) || null;
       phase=0;
       let audioUrl = saved && saved.audioUrl;
+      let audioKey = saved && saved.audioKey;
+      if (audioKey && (!audioUrl || audioUrl.startsWith("blob:"))) {
+        try {
+          const blob = await readMediaBlob(audioKey);
+          if (blob) {
+            if (audioUrl && audioUrl.startsWith("blob:")) URL.revokeObjectURL(audioUrl);
+            audioUrl = URL.createObjectURL(blob);
+            localAudioUrls.add(audioUrl);
+          }
+        } catch (_) {}
+      }
       if (audioUrl) {
-        scene.audioUrl=audioUrl;
-        updatePhaseProgress(scene,0,"done","تمت إعادة استخدام الصوت المكتمل سابقًا بدل استهلاك حصة صوت إضافية.",{audioUrl:audioUrl,stage:"الصوت محفوظ"});
+        scene.audioUrl=audioUrl; scene.audioKey=audioKey || null;
+        updatePhaseProgress(scene,0,"done","تمت إعادة استخدام الصوت المكتمل سابقًا بدل استهلاك حصة صوت إضافية.",{audioUrl:audioUrl,audioKey:audioKey||null,stage:"الصوت محفوظ"});
       } else {
         updatePhaseProgress(scene,0,"working","توليد صوت المشهد.");
-        audioUrl=await createNarration(scene,p.settings.language,p.settings.speed);
-        scene.audioUrl=audioUrl;
-        updatePhaseProgress(scene,0,"done","اكتمل الصوت؛ جارٍ إنشاء الصورة.",{audioUrl:audioUrl,stage:"اكتمل الصوت"});
+        const generatedAudio=await createNarration(scene,p.settings.language,p.settings.speed);
+        audioUrl = typeof generatedAudio === "string" ? generatedAudio : generatedAudio.url;
+        audioKey = typeof generatedAudio === "object" ? generatedAudio.key : null;
+        scene.audioUrl=audioUrl; scene.audioKey=audioKey;
+        updatePhaseProgress(scene,0,"done","اكتمل الصوت؛ جارٍ إنشاء الصورة.",{audioUrl:audioUrl,audioKey:audioKey,stage:"اكتمل الصوت"});
       }
       phase=1;
       saved = activeClips.find(function(c){return c.id===scene.id && c.narration===scene.narration;}) || saved;
@@ -826,6 +928,7 @@ function init() {
   $("script").value=active.script||"";
   applySettings(active.settings||defaultSettings());
   (active.clips||[]).forEach(function(c){activeClips.push(c);drawClip(c);});
+  restoreClipAudioUrls(activeClips);
   if(active.statusTitle){$("statusBox").classList.remove("hidden");$("statusTitle").textContent=active.statusTitle;$("statusDetail").textContent=active.statusDetail||"";}
   saveProjects();renderHistory();
   $("newProject").addEventListener("click",newProject);
