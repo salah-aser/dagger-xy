@@ -2,11 +2,11 @@ const DB_NAME = "salah-web-local-media-v1";
 const STORE = "assets";
 const VOICE_KEY = "voice-profile";
 const VOICE_SPACE = "mohammedaly22/VoiceTut-TTS";
-const IMAGE_SPACE = "akhaliq/Z-Image-Turbo";
+const IMAGE_SPACE = "mrfakename/Z-Image-Turbo";
 const VIDEO_SPACE = "Wan-AI/Wan2.2-S2V";
 const ORIGIN = {
   [VOICE_SPACE]: "https://mohammedaly22-voicetut-tts.hf.space",
-  [IMAGE_SPACE]: "https://akhaliq-z-image-turbo.hf.space",
+  [IMAGE_SPACE]: "https://mrfakename-z-image-turbo.hf.space",
   [VIDEO_SPACE]: "https://wan-ai-wan2-2-s2v.hf.space"
 };
 const $ = (id) => document.getElementById(id);
