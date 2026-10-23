@@ -1,26 +1,24 @@
-# Salah Web
+# Salah Web / Salah Cloud
 
-**الحالة الحالية:** واجهة تجريبية منشورة على GitHub Pages؛ ليست سيرفر GPU خاصًا ولا خدمة توليد غير محدودة.
+The browser-only prototype has been replaced with a clean, self-hostable server architecture.
 
-الرابط الحالي: https://salah-aser.github.io/dagger-xy/
+- Public control-panel preview: https://salah-aser.github.io/dagger-xy/
+- Self-hosted backend and GPU engine source: [engine/README.md](engine/README.md)
+- API server: FastAPI + SQLite + ComfyUI client
+- Video engine: ComfyUI + open Wan 2.2 models
+- Deployment: Docker Compose on a Linux machine with a compatible NVIDIA GPU
+- Optional HTTPS: Caddy reverse proxy
+- Data and generated files: stored on the host under engine/data and engine/outputs
 
-## ما يفعله المشروع
-- واجهة عربية لإدارة القصص ومشاهدها.
-- تخزين القصص داخل المتصفح.
-- محاولة توليد تعليق صوتي عربي بالفصحى محليًا عبر Nabra TTS.
-- استخدام خدمات خارجية للصورة والفيديو، وقد تكون لها حصص استخدام أو طوابير انتظار.
-- لا يضمن المشروع جودة قريبة من Grok أو توليدًا سحابيًا خاصًا ومجانيًا بلا حدود.
+## Important limits
 
-## البنية
-- `public/index.html`: واجهة الموقع.
-- `public/assets/studio.js`: منسّق إنتاج المشاهد.
-- `.github/workflows/salah-web-pages.yml`: يبني ملفات الصوت المطلوبة ثم ينشر `public/` على GitHub Pages.
+The public GitHub Pages site is only a frontend; it does not generate video by itself. To produce real AI video, deploy the engine directory on a GPU host and configure a working ComfyUI API workflow. The code and models can be self-hosted, but GPU compute, power, bandwidth, and storage are not guaranteed free forever. Wan 2.2 14B is a large model and needs a capable GPU. Your existing laptop with a GTX 1050 4GB is not enough for this model.
 
-## الخصوصية
-المستودع الحالي عام. لا تضف مفاتيح API أو توكنات أو تسجيلات صوتية خاصة إلى الملفات. خيار AI Horde يرسل وصف المشهد إلى خدمة مجتمعية خارجية؛ لا تستخدمه للمحتوى الحساس.
+The repository is public at present. Do not commit secrets, voice recordings, generated private stories, model weights, or the engine .env file. Outputs and server job data stay on your self-hosted server once deployed.
 
-## حدود الاستضافة
-GitHub Pages استضافة ملفات ثابتة وليست خادم inference دائمًا. توليد الفيديو المتقدم يحتاج قدرة GPU وخدمة inference؛ لا يوجد ضمان مجاني مدى الحياة أو سعة غير محدودة. تشغيل خادم مستقل باسم Salah يحتاج مزود استضافة أو جهازًا تملكه وتشغله، ومصاريف/حدود الموارد لا يمكن إلغاؤها برمجيًا.
+## Security
 
-## الترخيص
-راجع تراخيص النماذج والمكتبات الخارجية المذكورة في ملفات الإشعارات قبل إعادة توزيعها.
+- An API token is required for protected API operations.
+- Generated media is served through authenticated endpoints.
+- The default voice provider is local espeak-ng, which prioritizes privacy but has basic/robotic Arabic pronunciation. An optional online voice provider sends text outside the server.
+- Do not expose ComfyUI's port 8188 directly to the internet.
