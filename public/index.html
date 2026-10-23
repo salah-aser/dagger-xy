@@ -130,19 +130,20 @@
     </div>
   </details>
 
-  <details class="disclosure">
-    <summary>حل مشكلة الحصة المجانية — تسجيل Hugging Face (اختياري)</summary>
+  <details class="disclosure" open>
+    <summary>حل مشكلة الحصة المجانية — تسجيل Hugging Face (افتح هذا القسم)</summary>
     <div class="disclosure-inner">
-      <p class="hint">خدمة الصوت قالت إن حصة الاستخدام المجاني انتهت. يمكنك إضافة Access Token من حسابك في Hugging Face؛ يُحفظ على هذا الجهاز فقط ويُرسل إلى خدمات Hugging Face عند الاتصال بها، ولا يُرفع إلى مستودع GitHub. استخدم توكنًا محدود الصلاحيات للقراءة فقط، ولا تستخدم توكنًا بصلاحية الكتابة. قد تظل هناك حدود يومية حتى بعد تسجيل الدخول.</p>
+      <p class="hint" style="color:var(--danger)">مهم للأمان: التوكن الذي أُرسل في المحادثة يُفضّل إلغاؤه وإنشاء توكن جديد؛ لا تضع أي توكن في ملفات GitHub العامة ولا ترسله في المحادثات. هذا الحقل يحفظ التوكن على جهازك فقط. استخدم صلاحية Read فقط؛ وقد تظل حدود الاستخدام المجاني سارية حتى بعد تسجيل الدخول.</p>
       <div class="field">
         <label for="hfTokenInput">Hugging Face Access Token</label>
         <input id="hfTokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="hf_…">
         <div class="hint">أنشئ التوكن من صفحة <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener" style="color:var(--gold)">Hugging Face Tokens</a>. لا ترسله في المحادثة.</div>
       </div>
       <div class="grid2">
-        <button id="saveHFToken" type="button" class="primary" style="min-height:45px;margin-top:8px;font-size:14px">حفظ إعداد الاتصال على هذا الجهاز</button>
-        <button id="clearHFToken" type="button" class="primary" style="min-height:45px;margin-top:8px;font-size:14px;background:#353a4c;color:#f4f5fb;box-shadow:none">مسح التوكن المحفوظ</button>
+        <button id="saveHFToken" type="button" class="primary" style="min-height:45px;margin-top:8px;font-size:14px">حفظ التوكن</button>
+        <button id="testHFConnection" type="button" class="primary" style="min-height:45px;margin-top:8px;font-size:14px;background:#353a4c;color:#f4f5fb;box-shadow:none">اختبار الاتصال</button>
       </div>
+      <button id="clearHFToken" type="button" class="primary" style="min-height:42px;margin-top:8px;font-size:13px;background:#282d3d;color:#f4f5fb;box-shadow:none">مسح التوكن المحفوظ</button>
       <p id="hfTokenStatus" class="hint">لم يتم حفظ توكن لهذا المتصفح.</p>
       <p class="hint">لتحسين الصوت: الموقع يقسم السكريبت عند علامات الترقيم قدر الإمكان حتى لا ينتهي جزء الصوت عشوائيًا في منتصف جملة، مع أن دقة النطق تعتمد أيضًا على النموذج نفسه.</p>
     </div>
