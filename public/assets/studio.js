@@ -860,6 +860,9 @@ async function createFullVideo() {
       phase=0;
       let audioUrl = saved && saved.audioUrl;
       let audioKey = saved && saved.audioKey;
+      // A pre-studio project may contain old external MSA audio from the quota-limited model.
+      // Replace that legacy asset once with browser-local Nabra rather than reusing bad audio.
+      if (p.settings.language === "fusha" && !audioKey) audioUrl = null;
       if (audioKey && (!audioUrl || audioUrl.startsWith("blob:"))) {
         try {
           const blob = await readMediaBlob(audioKey);
