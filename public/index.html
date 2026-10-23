@@ -130,6 +130,20 @@
     </div>
   </details>
 
+  <details class="disclosure">
+    <summary>حل مشكلة الحصة المجانية — تسجيل Hugging Face (اختياري)</summary>
+    <div class="disclosure-inner">
+      <p class="hint">خدمة الصوت قالت إن حصة الاستخدام المجاني انتهت. يمكنك إضافة Access Token من حسابك في Hugging Face؛ يُحفظ على هذا الجهاز فقط ويُرسل إلى خدمات Hugging Face عند الاتصال بها، ولا يُرفع إلى مستودع GitHub. استخدم توكنًا محدود الصلاحيات للقراءة فقط، ولا تستخدم توكنًا بصلاحية الكتابة. قد تظل هناك حدود يومية حتى بعد تسجيل الدخول.</p>
+      <div class="field">
+        <label for="hfTokenInput">Hugging Face Access Token</label>
+        <input id="hfTokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="hf_…">
+        <div class="hint">أنشئ التوكن من صفحة <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener" style="color:var(--gold)">Hugging Face Tokens</a>. لا ترسله في المحادثة.</div>
+      </div>
+      <button id="saveHFToken" type="button" class="primary" style="min-height:45px;margin-top:8px;font-size:14px">حفظ إعداد الاتصال على هذا الجهاز</button>
+      <p id="hfTokenStatus" class="hint">لم يتم حفظ توكن لهذا المتصفح.</p>
+    </div>
+  </details>
+
   <div class="notice">بالضغط على «أنشئ الفيديو كاملًا»، سيُرسل الموقع أجزاء السكريبت والصوت والصور اللازمة إلى خدمات توليد خارجية. هذه الخدمات لها حصص وقد تتعطل أو ترفض بعض الطلبات؛ لا يمكن ضمان توليد مجاني غير محدود أو ثبات شكل الشخصية تمامًا.</div>
   <button id="generateFullVideo" class="primary" type="button">أنشئ الفيديو كاملًا <span aria-hidden="true">✦</span></button>
 
