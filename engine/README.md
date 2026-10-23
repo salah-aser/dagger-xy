@@ -24,23 +24,21 @@ The pipeline generates a voice track and text-driven video for each story scene,
 
 1. Install NVIDIA GPU drivers and Docker Engine + Docker Compose v2 with NVIDIA Container Toolkit.
 2. Copy the engine directory onto the server (clone the repository or upload the directory).
-3. Enter the engine directory and prepare local storage:
+3. From inside the engine directory, run the setup script. It creates a random API token in a local .env file, downloads the model weights (tens of GB), builds the containers and starts the stack:
 
-    mkdir -p models/diffusion_models models/text_encoders models/vae models/loras outputs data
-    cp .env.example .env
-    python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+    bash setup.sh
 
-4. Paste the generated value after API_TOKEN= in .env. Never commit .env.
-5. Download the model weights (these are large files; run once):
+   To skip the model download temporarily, use:
 
-    bash download_wan22_14b.sh
+    bash setup.sh --skip-model-download
 
-6. Start the stack:
+   Video generation will not work until the model files have been downloaded.
+4. Check the service state and logs:
 
-    docker compose up -d --build
+    docker compose ps
     docker compose logs -f
 
-7. Open http://SERVER-IP:8000 on the server network. The compose file binds the API to 127.0.0.1; for access from your computer use an SSH tunnel or enable HTTPS with a domain using the Caddy instructions below. Do not expose ComfyUI port 8188 publicly.
+5. The API binds to 127.0.0.1:8000 by default. For HTTPS/public access, set DOMAIN to a domain you control in .env and run docker compose --profile https up -d. Do not expose ComfyUI port 8188 publicly.
 
 ## Configure a ComfyUI API workflow
 
