@@ -534,16 +534,92 @@ async function createNarration(scene, language, speed) {
   if (!url) throw new Error("خدمة الصوت لم تُرجع ملفًا صوتيًا قابلًا للتشغيل.");
   return url;
 }
+async function createHordeStill(scene, dimensions) {
+  const base = "https://aihorde.net/api/v2";
+  status("المشهد " + scene.id + " — بديل الصور المجتمعي المجاني",
+    "حصة مولد الصور الأساسي غير متاحة؛ أُرسل طلب صورة واحدة إلى AI Horde. الطلب المجهول قد يُشارك علنًا وقد يحتاج وقت انتظار طويلًا.");
+  const submit = await fetch(base + "/generate/async", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": "0000000000",
+      "Client-Agent": "SalahWeb:1.0:github.com/salah-aser/dagger-xy"
+    },
+    body: JSON.stringify({
+      prompt: scene.visual + "### collage, triptych, diptych, storyboard, comic panels, split screen, multiple frames, image grid, repeated people, text, watermark, logos",
+      params: {
+        n: 1,
+        width: dimensions.w,
+        height: dimensions.h,
+        steps: 20,
+        cfg_scale: 7,
+        sampler_name: "k_euler_a"
+      },
+      nsfw: false,
+      censor_nsfw: true,
+      r2: true,
+      shared: false
+    })
+  });
+  if (!submit.ok) {
+    let detail = "";
+    try { detail = (await submit.json()).message || ""; } catch (_) {}
+    throw new Error("بديل AI Horde رفض الطلب (HTTP " + submit.status + "). " + detail);
+  }
+  const accepted = await submit.json();
+  if (!accepted.id) throw new Error("بديل الصور لم يُرجع رقم طلب.");
+  const jobId = accepted.id;
+  const deadline = Date.now() + 8 * 60 * 1000;
+  let lastQueue = "";
+  while (Date.now() < deadline) {
+    await new Promise(function(resolve) { setTimeout(resolve, 5000); });
+    const check = await fetch(base + "/generate/check/" + encodeURIComponent(jobId), {
+      headers: {"Client-Agent":"SalahWeb:1.0:github.com/salah-aser/dagger-xy"}
+    });
+    if (!check.ok) throw new Error("تعذر متابعة طلب AI Horde (HTTP " + check.status + ").");
+    const progress = await check.json();
+    const queue = progress.queue_position;
+    if (queue !== undefined && String(queue) !== lastQueue) {
+      lastQueue = String(queue);
+      status("المشهد " + scene.id + " — انتظار صورة مجانية",
+        "بديل المجتمع: " + (progress.waiting !== undefined ? progress.waiting + " طلبًا في الانتظار" : "الطلب في قائمة الانتظار") +
+        (queue !== undefined ? " · موقعك التقريبي في الصف " + queue : "") +
+        ". يظل وقت الانتظار حسب توفر أجهزة المتطوعين.");
+    }
+    if (progress.faulted) throw new Error("تعطل طلب AI Horde. جرّب لاحقًا أو عطّل البديل المجتمعي.");
+    if (progress.done) {
+      const resultResponse = await fetch(base + "/generate/status/" + encodeURIComponent(jobId), {
+        headers: {"Client-Agent":"SalahWeb:1.0:github.com/salah-aser/dagger-xy"}
+      });
+      if (!resultResponse.ok) throw new Error("تعذر استلام نتيجة AI Horde (HTTP " + resultResponse.status + ").");
+      const result = await resultResponse.json();
+      const item = result.generations && result.generations[0];
+      const url = item && (item.img || item.url);
+      if (!url || typeof url !== "string") throw new Error("اكتمل طلب AI Horde من دون رابط صورة.");
+      return url;
+    }
+  }
+  throw new Error("بديل الصور ظل في الانتظار أكثر من 8 دقائق. لم يُعاد إرسال الطلب تلقائيًا حتى لا نصنع طلبات مكررة.");
+}
 async function createStill(scene, index, total) {
   status("المشهد " + scene.id + " — جاري توليد صورة واحدة", "سيُرسل وصف المشهد مع تعليمات صريحة تمنع الكولاج واللوحات المتعددة.");
-  const client = await withTimeout(clientForImage(),45000,"الاتصال بنموذج الصور");
   const params = $("aspect").value === "16:9" ? {h:768,w:1344}
-    : $("aspect").value === "1:1" ? {h:1024,w:1024} : {h:1344,w:768};
+    : $("aspect").value === "1:1" ? {h:512,w:512} : {h:512,w:768};
   const seed = 1000 + scene.id * 37;
-  const result = await withTimeout(client.predict("/generate_image",[scene.visual,params.h,params.w,9,seed,true]),240000,"توليد الصورة");
-  const url = findAssetUrl(result && result.data && result.data[0],"image");
-  if (!url) throw new Error("نموذج الصور لم يُرجع صورة صالحة.");
-  return url;
+  try {
+    const client = await withTimeout(clientForImage(),45000,"الاتصال بنموذج الصور");
+    const result = await withTimeout(client.predict("/generate_image",[scene.visual,params.h,params.w,9,seed,true]),240000,"توليد الصورة");
+    const url = findAssetUrl(result && result.data && result.data[0],"image");
+    if (!url) throw new Error("نموذج الصور لم يُرجع صورة صالحة.");
+    return url;
+  } catch (err) {
+    const raw = String((err && err.message) || err || "");
+    if (!/ZeroGPU|runs limit|quota|exceeded|429|rate limit|Space metadata could not be loaded/i.test(raw)) throw err;
+    if (!$("communityImageFallback") || !$("communityImageFallback").checked) {
+      throw new Error("حصة مولد الصور المجاني انتهت. لو كانت قصتك عامة وغير سرية، فعّل خيار «السماح ببديل الصور المجتمعي المجاني» ثم أعد المحاولة. لم يُرسل النص إلى بديل عام. التفاصيل: " + raw.slice(0,250));
+    }
+    return await createHordeStill(scene, params);
+  }
 }
 async function createMotion(scene,imageUrl,audioUrl) {
   status("المشهد " + scene.id + " — تحريك الصورة وربطها بالصوت", "خدمة Wan2.2-S2V تحرك صورة مرجعية بناءً على الصوت. زمن الخدمة وحدودها خارج سيطرة الموقع.");
@@ -716,7 +792,7 @@ function init() {
   $("createVideo").addEventListener("click",createFullVideo);
   $("script").addEventListener("input",function(){updateScenePreview();saveCurrentProject();});
   $("characters").addEventListener("input",saveCurrentProject);
-  ["language","aspect","resolution","style","duration","speed","arabic","periodClothes","religiousRule"].forEach(function(id){
+  ["language","aspect","resolution","style","duration","speed","arabic","periodClothes","religiousRule","communityImageFallback"].forEach(function(id){
     $(id).addEventListener("change",function(){saveCurrentProject();updateScenePreview();});
   });
   updateScenePreview();
