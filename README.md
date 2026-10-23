@@ -1,24 +1,21 @@
 # Salah Web / Salah Cloud
 
-The browser-only prototype has been replaced with a clean, self-hostable server architecture.
+This repository now contains a self-hostable server architecture in the engine/ directory.
 
-- Public control-panel preview: https://salah-aser.github.io/dagger-xy/
-- Self-hosted backend and GPU engine source: [engine/README.md](engine/README.md)
-- API server: FastAPI + SQLite + ComfyUI client
-- Video engine: ComfyUI + open Wan 2.2 models
-- Deployment: Docker Compose on a Linux machine with a compatible NVIDIA GPU
-- Optional HTTPS: Caddy reverse proxy
-- Data and generated files: stored on the host under engine/data and engine/outputs
+- Public control panel: https://salah-aser.github.io/dagger-xy/
+- Server setup: engine/README.md
+- Backend: FastAPI + SQLite job storage + authenticated media routes.
+- Video engine: ComfyUI + the official Wan 2.2 text-to-video blueprint, bundled into the API image by default.
+- Deployment: Docker Compose on a Linux host with a compatible NVIDIA GPU.
+- Optional HTTPS reverse proxy: Caddy.
+- Model weights and generated projects stay on the server disk and are excluded from Git.
 
-## Important limits
+## What has actually been deployed?
 
-The public GitHub Pages site is only a frontend; it does not generate video by itself. To produce real AI video, deploy the engine directory on a GPU host and configure a working ComfyUI API workflow. The code and models can be self-hosted, but GPU compute, power, bandwidth, and storage are not guaranteed free forever. Wan 2.2 14B is a large model and needs a capable GPU. Your existing laptop with a GTX 1050 4GB is not enough for this model.
+GitHub Pages hosts the dashboard only. The GPU backend source has been added and its Python tests run in GitHub Actions; no GPU server has been created or started by this repository. To generate real AI video, run the setup on a Linux NVIDIA GPU machine and connect to its API URL from the dashboard.
 
-The repository is public at present. Do not commit secrets, voice recordings, generated private stories, model weights, or the engine .env file. Outputs and server job data stay on your self-hosted server once deployed.
+## Limits and privacy
 
-## Security
+No source code can guarantee a private always-on GPU server or unlimited free video inference for life. Compute, storage, electricity and bandwidth require real resources. The official Wan 2.2 14B workflow needs a powerful GPU (the reference workflow targets 24 GB VRAM) and downloads tens of GB of model weights. The user's previously described GTX 1050 4 GB laptop is not suitable for this server configuration.
 
-- An API token is required for protected API operations.
-- Generated media is served through authenticated endpoints.
-- The default voice provider is local espeak-ng, which prioritizes privacy but has basic/robotic Arabic pronunciation. An optional online voice provider sends text outside the server.
-- Do not expose ComfyUI's port 8188 directly to the internet.
+This repository remains public. Do not commit secrets, voice recordings, generated private stories, model weights or the engine/.env file. The default voice is local espeak-ng and may sound robotic; optional Edge TTS sends text to an external provider. Video generation creates a scene and overlays a voice-over; it does not guarantee character-perfect continuity or lip synchronization.
