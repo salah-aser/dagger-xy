@@ -43,7 +43,8 @@ function defaultSettings() {
     characters: "",
     arabic: true,
     periodClothes: true,
-    religiousRule: true
+    religiousRule: true,
+    communityFallback: false
   };
 }
 function activeProject() {
@@ -60,7 +61,8 @@ function settingsFromPage() {
     characters: $("characters").value || "",
     arabic: $("arabic").checked,
     periodClothes: $("periodClothes").checked,
-    religiousRule: $("religiousRule").checked
+    religiousRule: $("religiousRule").checked,
+    communityFallback: $("communityImageFallback").checked
   };
 }
 function applySettings(s) {
@@ -72,6 +74,7 @@ function applySettings(s) {
   $("arabic").checked = s.arabic !== false;
   $("periodClothes").checked = s.periodClothes !== false;
   $("religiousRule").checked = s.religiousRule !== false;
+  $("communityImageFallback").checked = s.communityFallback === true;
   updateScenePreview();
 }
 function pageTitle(script) {
@@ -716,14 +719,29 @@ async function createFullVideo() {
   if (!activeProject()) { const p=createProject(); projects.unshift(p); activeId=p.id; }
   saveCurrentProject();
   const p=activeProject();
+  // Preserve completed assets from the last attempt; a quota failure should not force new audio/image calls.
+  const previousClips = Array.isArray(p.clips) ? p.clips.map(function(c) {
+    return {id:c.id,narration:c.narration,stage:c.stage,audioUrl:c.audioUrl||null,imageUrl:c.imageUrl||null,videoUrl:c.videoUrl||null,error:c.error||null};
+  }) : [];
   setBusy(true);
   clearResults();
-  p.status="running";p.progress=0;p.clips=[];p.finalUrl="";p.statusTitle="بدأ الإنتاج";
-  p.statusDetail="يقسم السكريبت تلقائيًا ثم يولد الصوت والصورة والفيديو لكل مشهد.";
+  activeClips = previousClips.slice();
+  activeClips.forEach(function(c){drawClip(c);});
+  p.status="running";p.progress=0;p.finalUrl="";p.statusTitle="بدأ الإنتاج / استكمال المشاهد";
+  p.statusDetail="سيعيد استخدام الأصوات والصور والفيديوهات المكتملة سابقًا ما دامت روابطها ما زالت صالحة.";
   const scenes=buildScenePlan(script);
   activeScenes=scenes;
   p.sceneCount=scenes.length;
   p.segments=scenes.map(function(s){return {id:s.id,narration:s.narration};});
+  // Discard old assets only for scene IDs that no longer match the current script segmentation.
+  activeClips = activeClips.filter(function(c) {
+    const scene = scenes.find(function(s){return s.id===c.id;});
+    return !!scene && scene.narration === c.narration;
+  });
+  $("results").replaceChildren();
+  cardByScene.clear();
+  activeClips.forEach(function(c){drawClip(c);});
+  p.clips=activeClips.map(function(c){return {id:c.id,narration:c.narration,stage:c.stage,audioUrl:c.audioUrl||null,imageUrl:c.imageUrl||null,videoUrl:c.videoUrl||null,error:c.error||null};});
   saveProjects();renderHistory();
   if (!scenes.length) { setBusy(false);status("لم يتم العثور على مشاهد","أدخل نصًا يحتوي على كلام.");return; }
   setProgress(0,"تقسيم القصة إلى " + scenes.length + " مشهدًا");
@@ -731,23 +749,45 @@ async function createFullVideo() {
   let current=null,phase=0;
   try {
     for (const scene of scenes) {
-      current=scene; phase=0;
-      updatePhaseProgress(scene,0,"working","توليد صوت المشهد.");
-      const audioUrl=await createNarration(scene,p.settings.language,p.settings.speed);
-      scene.audioUrl=audioUrl;
-      updatePhaseProgress(scene,0,"done","اكتمل الصوت؛ جارٍ إنشاء الصورة.",{audioUrl:audioUrl,stage:"اكتمل الصوت"});
+      current=scene;
+      let saved = activeClips.find(function(c){return c.id===scene.id && c.narration===scene.narration;}) || null;
+      phase=0;
+      let audioUrl = saved && saved.audioUrl;
+      if (audioUrl) {
+        scene.audioUrl=audioUrl;
+        updatePhaseProgress(scene,0,"done","تمت إعادة استخدام الصوت المكتمل سابقًا بدل استهلاك حصة صوت إضافية.",{audioUrl:audioUrl,stage:"الصوت محفوظ"});
+      } else {
+        updatePhaseProgress(scene,0,"working","توليد صوت المشهد.");
+        audioUrl=await createNarration(scene,p.settings.language,p.settings.speed);
+        scene.audioUrl=audioUrl;
+        updatePhaseProgress(scene,0,"done","اكتمل الصوت؛ جارٍ إنشاء الصورة.",{audioUrl:audioUrl,stage:"اكتمل الصوت"});
+      }
       phase=1;
-      updatePhaseProgress(scene,1,"working","إنشاء إطار واحد فقط لهذا المشهد. لا يتم طلب لوحة مشاهد.");
-      const imageUrl=await createStill(scene,scene.id-1,scenes.length);
-      scene.imageUrl=imageUrl;
-      updatePhaseProgress(scene,1,"done","اكتملت صورة المشهد؛ جارٍ تحريكها مع الصوت.",{audioUrl:audioUrl,imageUrl:imageUrl,stage:"اكتمل الصوت والصورة"});
+      saved = activeClips.find(function(c){return c.id===scene.id && c.narration===scene.narration;}) || saved;
+      let imageUrl = saved && saved.imageUrl;
+      if (imageUrl) {
+        scene.imageUrl=imageUrl;
+        updatePhaseProgress(scene,1,"done","تمت إعادة استخدام صورة المشهد المحفوظة سابقًا.",{audioUrl:audioUrl,imageUrl:imageUrl,stage:"الصورة محفوظة"});
+      } else {
+        updatePhaseProgress(scene,1,"working","إنشاء إطار واحد فقط لهذا المشهد. لا يتم طلب لوحة مشاهد.");
+        imageUrl=await createStill(scene,scene.id-1,scenes.length);
+        scene.imageUrl=imageUrl;
+        updatePhaseProgress(scene,1,"done","اكتملت صورة المشهد؛ جارٍ تحريكها مع الصوت.",{audioUrl:audioUrl,imageUrl:imageUrl,stage:"اكتمل الصوت والصورة"});
+      }
       phase=2;
-      updatePhaseProgress(scene,2,"working","تحريك الصورة ومزامنة حركة الرأس والفم مع الصوت.");
-      const videoUrl=await createMotion(scene,imageUrl,audioUrl);
-      scene.videoUrl=videoUrl;scene.stage="اكتمل الفيديو";
-      const c=updateClip(scene,{audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,stage:"جاهز للتنزيل",error:null});
-      updatePhaseProgress(scene,2,"done","اكتمل هذا المشهد وهو متاح الآن قبل بدء المشهد التالي.",{audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,stage:"اكتمل الفيديو"});
-      drawClip(c);
+      saved = activeClips.find(function(c){return c.id===scene.id && c.narration===scene.narration;}) || saved;
+      let videoUrl = saved && saved.videoUrl;
+      if (videoUrl) {
+        scene.videoUrl=videoUrl;
+        updatePhaseProgress(scene,2,"done","تمت إعادة استخدام فيديو المشهد المكتمل سابقًا.",{audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,stage:"الفيديو محفوظ"});
+      } else {
+        updatePhaseProgress(scene,2,"working","تحريك الصورة ومزامنة حركة الرأس والفم مع الصوت.");
+        videoUrl=await createMotion(scene,imageUrl,audioUrl);
+        scene.videoUrl=videoUrl;scene.stage="اكتمل الفيديو";
+        const c=updateClip(scene,{audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,stage:"جاهز للتنزيل",error:null});
+        updatePhaseProgress(scene,2,"done","اكتمل هذا المشهد وأصبح متاحًا الآن.",{audioUrl:audioUrl,imageUrl:imageUrl,videoUrl:videoUrl,stage:"اكتمل الفيديو"});
+        drawClip(c);
+      }
     }
     setProgress(90,"اكتملت جميع المشاهد · تجهيز ملف MP4");
     const finalBlob=await mergeFinal(activeClips);
