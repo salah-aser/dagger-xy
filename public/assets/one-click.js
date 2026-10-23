@@ -1012,15 +1012,15 @@ async function gradioFile(fileOrUrl) {
   return library.handle_file(fileOrUrl);
 }
 function getVoiceClientV2() {
-  if (!voiceClientPromise) voiceClientPromise = loadGradioClientModule().then(function(lib) { return lib.Client.connect(VOICE_SPACE); });
+  if (!voiceClientPromise) voiceClientPromise = loadGradioClientModule().then(function(lib) { return lib.Client.connect(ORIGIN[VOICE_SPACE]); });
   return voiceClientPromise;
 }
 function getImageClientV2() {
-  if (!imageClientPromise) imageClientPromise = loadGradioClientModule().then(function(lib) { return lib.Client.connect(IMAGE_SPACE); });
+  if (!imageClientPromise) imageClientPromise = loadGradioClientModule().then(function(lib) { return lib.Client.connect(ORIGIN[IMAGE_SPACE]); });
   return imageClientPromise;
 }
 function getVideoClientV2() {
-  if (!videoClientPromise) videoClientPromise = loadGradioClientModule().then(function(lib) { return lib.Client.connect(VIDEO_SPACE); });
+  if (!videoClientPromise) videoClientPromise = loadGradioClientModule().then(function(lib) { return lib.Client.connect(ORIGIN[VIDEO_SPACE]); });
   return videoClientPromise;
 }
 
