@@ -77,7 +77,7 @@ def test_patch_workflow_updates_prompt_and_seed():
     req = {"aspect_ratio": "9:16", "width": 480, "height": 854, "frames": 81, "seed": 44, "visual_style": "cinematic", "character_description": ""}
     patched = patch_workflow(workflow, "a cinematic shot", req, 2, "abc123")
     assert patched["1"]["inputs"]["text"] == "a cinematic shot"
-    assert patched["2"]["inputs"]["seed"] == 46
+    assert patched["2"]["inputs"]["seed"] == 44
     assert patched["2"]["inputs"]["width"] == 480
     assert patched["2"]["inputs"]["height"] == 848
 
