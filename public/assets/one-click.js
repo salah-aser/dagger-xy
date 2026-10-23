@@ -1043,25 +1043,24 @@ init = initV2;
 /* Quota-aware connection and narration chunks aligned to natural Arabic punctuation. */
 const HF_TOKEN_KEY_V3 = "salah-web-hf-access-token-v1";
 function getHFTokenOptionsV3() {
-  let token = "";
-  try { token = localStorage.getItem(HF_TOKEN_KEY_V3) || ""; } catch (_) {}
-  return token.startsWith("hf_") ? { token: token } : {};
+  // Do not send personal HF tokens to third-party public Spaces.
+  return {};
 }
 function getVoiceClientV3() {
   if (!voiceClientPromise) voiceClientPromise = loadGradioClientModule().then(function(lib) {
-    return lib.Client.connect(ORIGIN[VOICE_SPACE], getHFTokenOptionsV3());
+    return lib.Client.connect(ORIGIN[VOICE_SPACE]);
   });
   return voiceClientPromise;
 }
 function getImageClientV3() {
   if (!imageClientPromise) imageClientPromise = loadGradioClientModule().then(function(lib) {
-    return lib.Client.connect(ORIGIN[IMAGE_SPACE], getHFTokenOptionsV3());
+    return lib.Client.connect(ORIGIN[IMAGE_SPACE]);
   });
   return imageClientPromise;
 }
 function getVideoClientV3() {
   if (!videoClientPromise) videoClientPromise = loadGradioClientModule().then(function(lib) {
-    return lib.Client.connect(ORIGIN[VIDEO_SPACE], getHFTokenOptionsV3());
+    return lib.Client.connect(ORIGIN[VIDEO_SPACE]);
   });
   return videoClientPromise;
 }
@@ -1297,5 +1296,6 @@ init = async function() {
   await previousInitV3();
   if ($("testHFConnection")) $("testHFConnection").addEventListener("click", testHFConnectionV4);
 };
+init = initV5;
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
 else init();
