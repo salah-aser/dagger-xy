@@ -326,7 +326,11 @@ function switchProject(id) {
     $("statusBox").classList.add("hidden");
   }
   setProgress(p.progress || 0, p.status === "draft" ? "جاهز لبدء التوليد" : "آخر حالة محفوظة");
-  if (p.finalUrl) {
+  if (p.finalKey) {
+    readMediaBlob(p.finalKey).then(function(blob) {
+      if (blob && activeId === p.id) showFinal(blob);
+    }).catch(function(){});
+  } else if (p.finalUrl) {
     $("finalVideo").src = p.finalUrl;
     $("finalVideo").classList.remove("hidden");
     $("downloadFinal").href = p.finalUrl;
@@ -906,9 +910,17 @@ async function createFullVideo() {
     }
     setProgress(90,"اكتملت جميع المشاهد · تجهيز ملف MP4");
     const finalBlob=await mergeFinal(activeClips);
+    const finalKey=(activeId || "project") + ":final-video-v1";
+    let finalSaved = false;
+    try { await saveMediaBlob(finalKey,finalBlob); finalSaved=true; } catch (_) {}
+    p.finalKey=finalSaved ? finalKey : null;
     showFinal(finalBlob);
     setProgress(100,"اكتمل الفيديو النهائي");
-    p.status="completed";p.progress=100;p.statusTitle="الفيديو الكامل جاهز";p.statusDetail="اكتملت المشاهد وتم دمجها في ملف واحد.";p.completedAt=Date.now();saveProjects();
+    p.status="completed";p.progress=100;p.statusTitle="الفيديو الكامل جاهز";
+    p.statusDetail=finalSaved
+      ? "اكتملت المشاهد ودمجها في ملف واحد، وتم حفظ الفيديو النهائي محليًا داخل هذا المتصفح."
+      : "اكتملت المشاهد ودمجها في ملف واحد. التخزين المحلي لم يقبل حفظ النسخة؛ نزّل الفيديو الآن للاحتفاظ به.";
+    p.completedAt=Date.now();saveProjects();
     status("الفيديو الكامل جاهز ✓","تم دمج " + scenes.length + " مشهدًا في ملف MP4 واحد. يمكنك تنزيله الآن.","success");
   } catch (e) {
     const message=describeError(e);
@@ -942,6 +954,11 @@ function init() {
   applySettings(active.settings||defaultSettings());
   (active.clips||[]).forEach(function(c){activeClips.push(c);drawClip(c);});
   restoreClipAudioUrls(activeClips);
+  if (active.finalKey) {
+    readMediaBlob(active.finalKey).then(function(blob) {
+      if (blob && activeId === active.id) showFinal(blob);
+    }).catch(function(){});
+  }
   if(active.statusTitle){$("statusBox").classList.remove("hidden");$("statusTitle").textContent=active.statusTitle;$("statusDetail").textContent=active.statusDetail||"";}
   saveProjects();renderHistory();
   $("newProject").addEventListener("click",newProject);
