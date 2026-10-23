@@ -615,8 +615,8 @@ async function mergeFinal(clips) {
     list.push("file '"+ov+"'");
   }
   await engine.writeFile("list.txt",new TextEncoder().encode(list.join("\n")+"\n"));
-  await engine.exec(["-f","concat","-safe","0","-i","list.txt","-c","copy","-movflags","+faststart","Salah-Studio.mp4"]);
-  const bytes=await engine.readFile("Salah-Studio.mp4");
+  await engine.exec(["-f","concat","-safe","0","-i","list.txt","-c","copy","-movflags","+faststart","Salah-Web-Story.mp4"]);
+  const bytes=await engine.readFile("Salah-Web-Story.mp4");
   const blob=new Blob([bytes],{type:"video/mp4"});
   if (!blob.size) throw new Error("ملف الدمج النهائي فارغ.");
   return blob;
