@@ -106,8 +106,12 @@
         </div>
       </div>
       <div class="notice">
-        <strong>الشفافية حول المجانية:</strong> الواجهة والكود ملكك، لكن توليد الصوت والفيديو يتم عبر خدمات خارجية لها حصص وقد تتوقف أو تتغير. نسخة Wan2.2-S2V العامة تستدعي خدمة فيديو خارجية، لذلك لا يمكن ضمان إنتاج غير محدود ومجاني للأبد. نسبة التقدم تحسب المراحل المكتملة ولا تمثل نسبة داخلية دقيقة من النموذج.
+        <strong>الشفافية حول المجانية:</strong> الواجهة والكود ملكك، لكن توليد الصوت والفيديو يتم عبر خدمات خارجية لها حصص وقد تتوقف. نسبة التقدم تحسب المراحل المكتملة ولا تمثل نسبة داخلية دقيقة من النموذج.
       </div>
+      <label class="check" style="margin:12px 0">
+        <input id="communityImageFallback" type="checkbox">
+        <span><strong>السماح ببديل الصور المجتمعي المجاني عند نفاد حصة Hugging Face.</strong> هذا البديل قد ينتظر في طابور، والصورة لا تضمن نفس الجودة. تحذير خصوصية: طلبات AI Horde المجهولة قد تُشارك علنًا؛ لا تفعّل هذا الخيار للقصص السرية أو التي تحتوي معلومات شخصية.</span>
+      </label>
       <button id="createVideo" class="action" type="button">أنشئ الفيديو الكامل <span aria-hidden="true">✦</span></button>
       <div id="statusBox" class="status hidden" aria-live="polite">
         <h3 id="statusTitle">جاهز</h3>
@@ -139,6 +143,6 @@
     · <a href="./advanced-planner.html">المخطط القديم</a>
   </footer>
 </div>
-<script type="module" src="./assets/studio.js?v=20261024-studio2"></script>
+<script type="module" src="./assets/studio.js?v=20261024-studio3"></script>
 </body>
 </html>
