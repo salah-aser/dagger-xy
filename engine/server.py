@@ -604,6 +604,8 @@ async def run_job(job_id: str, resume: bool = False) -> None:
             completed = any(scene.get("status") == "completed" for scene in current["scenes"])
             update_job(job_id, status="partial" if completed else "failed",
                        stage="failed", error=str(exc)[:1600], scenes_json=current["scenes"])
+        finally:
+            ACTIVE_TASKS.pop(job_id, None)
 
 
 @asynccontextmanager
