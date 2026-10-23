@@ -34,10 +34,10 @@ progress{width:100%;height:8px;accent-color:var(--gold)}.jobs{display:grid;gap:1
 <div class="health" id="healthDetails"></div>
 </section>
 <section class="panel">
-<div class="kicker">٢ — محرك الفيديو</div><h2>إعداد سير العمل</h2><p class="sub">ارفع ملف JSON محفوظًا من ComfyUI بصيغة API. يُحفظ الملف على سيرفرك الخاص.</p>
+<div class="kicker">٢ — محرك الفيديو</div><h2>إعداد سير العمل</h2><p class="sub">يتضمن Salah Cloud قالب Wan 2.2 افتراضيًا. يمكنك رفع ملف API JSON خاص بك لاستخدام سير عمل مختلف؛ يُحفظ على سيرفرك الخاص.</p>
 <div class="field"><label for="workflowFile">ComfyUI API workflow (.json)</label><input id="workflowFile" type="file" accept=".json,application/json"></div>
 <button class="btn darkbtn full" id="uploadWorkflow">حفظ سير العمل على السيرفر</button>
-<p class="small">حمّل النماذج وافتحها داخل ComfyUI، ثم اختر Save (API Format). هذا إعداد لمرة واحدة.</p>
+<p class="small">اختياري: لا تحتاج إلى رفع ملف إذا أردت استخدام قالب Wan 2.2 الافتراضي. حمّل نماذج Wan 2.2 إلى مجلد models أولًا.</p>
 </section>
 <div class="note"><strong>الخصوصية والتكلفة:</strong> عند استخدام الصوت المحلي لا يُرسل النص لخدمة TTS خارجية. اختيار الصوت السحابي يرسل النص إلى مزود الصوت. توليد الفيديو يعمل على GPU السيرفر؛ هذه اللوحة لا توفر GPU مجانيًا بنفسها.</div>
 </aside>
