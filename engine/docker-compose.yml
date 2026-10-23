@@ -1,0 +1,42 @@
+services:
+  comfyui:
+    build:
+      context: ./comfyui
+    restart: unless-stopped
+    command: ["python3","main.py","--listen","0.0.0.0","--port","8188"]
+    volumes:
+      - comfy_models:/opt/ComfyUI/models
+      - comfy_output:/opt/ComfyUI/output
+    expose:
+      - "8188"
+    gpus: all
+    healthcheck:
+      test: ["CMD-SHELL","curl -fsS http://127.0.0.1:8188/system_stats >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 8s
+      retries: 10
+      start_period: 180s
+
+  salah-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      COMFYUI_URL: http://comfyui:8188
+      SALAHDATA: /data
+      API_TOKEN: ${API_TOKEN:?Set API_TOKEN in engine/.env before starting}
+      TTS_PROVIDER: local
+      COMFY_TIMEOUT_SECONDS: 1800
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - salah_data:/data
+    depends_on:
+      comfyui:
+        condition: service_healthy
+
+volumes:
+  comfy_models:
+  comfy_output:
+  salah_data:
