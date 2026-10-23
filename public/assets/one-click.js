@@ -1384,3 +1384,93 @@ buildScenePlan = buildScenePlanV3;
 init = initV5;
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
 else init();
+
+
+
+/* Hard-guaranteed story segmentation: no generated narration request exceeds model limits. */
+function buildScenePlanV6(text, desiredMinutes) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return [];
+  const words = normalized.split(" ");
+  const maxWords = 30;
+  const maxChars = 850;
+  const parts = [];
+  let start = 0;
+  while (start < words.length) {
+    let end = Math.min(words.length, start + maxWords);
+    while (end > start + 1 && words.slice(start, end).join(" ").length > maxChars) end--;
+    if (end <= start) end = start + 1;
+    // Prefer a natural Arabic/English sentence boundary near the end of each segment.
+    const floor = Math.min(end - 1, start + Math.max(9, Math.floor((end-start) * 0.55)));
+    let sentenceEnd = -1, clauseEnd = -1;
+    for (let i = floor; i < end; i++) {
+      if (/[.!?؟…؛]$/.test(words[i])) sentenceEnd = i + 1;
+      else if (/[،,:]$/.test(words[i])) clauseEnd = i + 1;
+    }
+    if (sentenceEnd > start) end = sentenceEnd;
+    else if (clauseEnd > start) end = clauseEnd;
+    // Guard pathological unspaced content to ensure the TTS provider's 3000-char limit is never reached.
+    let part = words.slice(start, end).join(" ");
+    if (part.length > 1200) {
+      const raw = words.slice(start, end).join(" ");
+      let p = 0;
+      while (p < raw.length) {
+        let q = Math.min(raw.length, p + maxChars);
+        if (q < raw.length) {
+          const space = raw.lastIndexOf(" ", q);
+          if (space > p + 100) q = space;
+        }
+        const fragment = raw.slice(p, q).trim();
+        if (fragment) parts.push(fragment);
+        p = q;
+        while (p < raw.length && raw[p] === " ") p++;
+      }
+    } else if (part) parts.push(part);
+    start = end;
+  }
+  const estimateSeconds = words.length / 2.15; // rough narration estimate, not a model guarantee
+  return parts.map(function(part, index) {
+    return {
+      id: index + 1,
+      narration: part,
+      story: part,
+      visual: makeVisualPrompt(part, index, parts.length),
+      start: Math.round(index * 15),
+      end: Math.round((index + 1) * 15),
+      wordCount: wordCountV3(part),
+      charCount: part.length,
+      estimatedSeconds: estimateSeconds / Math.max(1, parts.length)
+    };
+  });
+}
+function drawSceneCardV6(clip) {
+  // Keep result previews compact, particularly when revisiting an old failed story.
+  let card = sceneCardNodes.get(clip.id);
+  if (!card) {
+    drawSceneCard(clip);
+    card = sceneCardNodes.get(clip.id);
+    if (!card) return;
+  }
+  const narration = card.querySelector(".clip-narration");
+  if (narration && clip.narration && clip.narration.length > 320) {
+    narration.textContent = clip.narration.slice(0,320) + "…";
+    narration.title = "معاينة مختصرة للنص الكامل لهذا المشهد";
+  }
+}
+function applyHardSplitV6() {
+  const original = buildScenePlan;
+  buildScenePlan = buildScenePlanV6;
+  drawSceneCard = function(clip) {
+    originalDrawSceneCardV6(clip);
+    const card = sceneCardNodes.get(clip.id);
+    const narration = card && card.querySelector(".clip-narration");
+    if (narration && clip.narration && clip.narration.length > 320) {
+      narration.textContent = clip.narration.slice(0,320) + "…";
+      narration.title = "معاينة مختصرة للنص الكامل لهذا المشهد";
+    }
+  };
+}
+
+
+buildScenePlan = buildScenePlanV6;
+errorText = errorTextV3;
