@@ -133,17 +133,17 @@
   <details class="disclosure" open>
     <summary>حل مشكلة الحصة المجانية — تسجيل Hugging Face (افتح هذا القسم)</summary>
     <div class="disclosure-inner">
-      <p class="hint" style="color:var(--danger)">مهم للأمان: التوكن الذي أُرسل في المحادثة يُفضّل إلغاؤه وإنشاء توكن جديد؛ لا تضع أي توكن في ملفات GitHub العامة ولا ترسله في المحادثات. هذا الحقل يتحقق من التوكن بأمان على جهازك فقط. استخدم صلاحية Read فقط؛ وقد تظل حدود الاستخدام المجاني سارية حتى بعد تسجيل الدخول.</p>
+      <p class="hint" style="color:var(--danger)">مهم للأمان: ألغِ التوكن الذي أرسلته في المحادثة وأنشئ واحدًا جديدًا عند الحاجة. أدخل التوكن هنا للتحقق من صلاحيته عبر huggingface.co فقط؛ لن يُحفظ في الموقع ولن يُرسل إلى مساحات النماذج العامة. التحقق من التوكن لا يزيل حدود الاستخدام المجاني.</p>
       <div class="field">
         <label for="hfTokenInput">Hugging Face Access Token</label>
-        <input id="hfTokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="hf_…">
+        <input id="hfTokenInput" type="password" autocomplete="new-password" spellcheck="false" placeholder="hf_…">
         <div class="hint">أنشئ التوكن من صفحة <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener" style="color:var(--gold)">Hugging Face Tokens</a>. لا ترسله في المحادثة.</div>
       </div>
       <div class="grid2">
-        <button id="saveHFToken" type="button" class="primary" style="min-height:45px;margin-top:8px;font-size:14px">حفظ التوكن</button>
+        <button id="saveHFToken" type="button" class="primary" style="min-height:45px;margin-top:8px;font-size:14px">تحقق من التوكن بأمان</button>
         <button id="testHFConnection" type="button" class="primary" style="min-height:45px;margin-top:8px;font-size:14px;background:#353a4c;color:#f4f5fb;box-shadow:none">اختبار الاتصال</button>
       </div>
-      <button id="clearHFToken" type="button" class="primary" style="min-height:42px;margin-top:8px;font-size:13px;background:#282d3d;color:#f4f5fb;box-shadow:none">مسح التوكن المحفوظ</button>
+      <button id="clearHFToken" type="button" class="primary" style="min-height:42px;margin-top:8px;font-size:13px;background:#282d3d;color:#f4f5fb;box-shadow:none">مسح أي توكن قديم من هذا الجهاز</button>
       <p id="hfTokenStatus" class="hint">لم يتم حفظ توكن لهذا المتصفح.</p>
       <p class="hint">لتحسين الصوت: الموقع يقسم السكريبت عند علامات الترقيم قدر الإمكان حتى لا ينتهي جزء الصوت عشوائيًا في منتصف جملة، مع أن دقة النطق تعتمد أيضًا على النموذج نفسه.</p>
     </div>
@@ -179,6 +179,6 @@
   <a href="https://github.com/salah-aser/dagger-xy">المشروع على GitHub</a> · <a href="./advanced-planner.html">فتح المخطط القديم</a>
 </footer>
 </div>
-<script type="module" src="./assets/one-click.js?v=20261023-token-test4"></script>
+<script type="module" src="./assets/one-click.js?v=20261023-token-test5"></script>
 </body>
 </html>
