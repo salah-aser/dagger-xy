@@ -64,7 +64,7 @@ The Caddy container obtains and renews HTTPS certificates. Keep port 8188 privat
 - local voice uses espeak-ng in the server container. It is local and free, but speech can sound robotic and Arabic voice quality depends on the installed voice.
 - edge voice uses an online TTS endpoint without an API key, but sends the narration text to an external provider. Use it only when you explicitly accept that privacy trade-off.
 - If the story has sensitive information, stay with local voice and do not use public/community fallback endpoints.
-- Generated assets and job state are stored in ./data. Keep this directory out of Git.
+- Generated job state and final MP4s are stored in the Docker named volume salah_data mounted at /data. ComfyUI intermediates are written to ./outputs; model weights are stored in ./models. Keep all of these server-side folders and the .env file out of Git.
 
 ## API routes
 
