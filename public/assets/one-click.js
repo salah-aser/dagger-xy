@@ -1263,18 +1263,124 @@ async function testHFConnectionV4() {
   }
 }
 
-/* Last-mile overrides used by the published page. */
+
+
+/* Final stable initialization. Define every token helper before wiring the UI. */
+function removeStoredHFTokenV5() {
+  try { localStorage.removeItem(HF_TOKEN_KEY_V3); } catch (_) {}
+}
+async function verifyHFTokenWithOfficialAPIv5(token) {
+  const controller = new AbortController();
+  const timer = setTimeout(function() { controller.abort(); }, 15000);
+  try {
+    const response = await fetch("https://huggingface.co/api/whoami-v2", {
+      method: "GET",
+      headers: { "Authorization": "Bearer " + token, "Accept": "application/json" },
+      signal: controller.signal,
+      cache: "no-store"
+    });
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("رفض Hugging Face التوكن. قد يكون غير صحيح أو ملغيًا أو بلا صلاحية مناسبة.");
+    }
+    if (!response.ok) throw new Error("أعاد Hugging Face رمز HTTP " + response.status + ".");
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function currentTokenForCheckV5() {
+  const typed = String($("hfTokenInput").value || "").trim();
+  let oldStored = "";
+  try { oldStored = localStorage.getItem(HF_TOKEN_KEY_V3) || ""; } catch (_) {}
+  return typed || oldStored;
+}
+function bindFreshClickV5(id, handler) {
+  const prior = $(id);
+  if (!prior) return null;
+  const fresh = prior.cloneNode(true);
+  prior.replaceWith(fresh);
+  fresh.addEventListener("click", handler);
+  return fresh;
+}
+async function verifyOnlyV5() {
+  const button = $("saveHFToken");
+  const input = $("hfTokenInput");
+  const status = $("hfTokenStatus");
+  const token = currentTokenForCheckV5();
+  removeStoredHFTokenV5();
+  if (button) button.disabled = true;
+  status.textContent = "بدأ التحقق… جاري فحص التوكن مع huggingface.co فقط. لن يتم حفظه أو إرساله لخدمات التوليد العامة.";
+  setStatus("جارٍ التحقق من التوكن", "هذه الخطوة تختبر صلاحية التوكن فقط؛ لا تضمن حصة توليد صوت أو فيديو.");
+  try {
+    if (!token) throw new Error("اكتب التوكن الجديد في الخانة أولًا، ثم اضغط «تحقق من التوكن بأمان».");
+    if (!/^hf_[A-Za-z0-9]+$/.test(token)) throw new Error("صيغة التوكن غير صحيحة؛ تأكد أنه يبدأ بـ hf_ ومن دون مسافات.");
+    const info = await verifyHFTokenWithOfficialAPIv5(token);
+    const account = info && (info.name || info.username) ? (info.name || info.username) : "حساب Hugging Face";
+    status.textContent = "التوكن صالح لحساب " + account + ". تم التحقق منه عبر huggingface.co فقط، ولم يُحفظ أو يُرسل لأي خدمة توليد.";
+    setStatus("تم التحقق من التوكن بنجاح ✓", "الحساب: " + account + ". تنبيه: صلاحية التوكن لا تلغي حدود ZeroGPU للمساحات العامة.", "success");
+  } catch (err) {
+    const raw = String((err && err.message) || err || "خطأ غير معروف");
+    let friendly = raw;
+    if (err && err.name === "AbortError") friendly = "انتهت مهلة الاتصال بـ huggingface.co. تحقق من الإنترنت وأعد المحاولة.";
+    else if (/Failed to fetch|NetworkError|Load failed/i.test(raw)) friendly = "المتصفح منع الاتصال أو أن سياسة CORS لا تسمح بالطلب. لم يُرسل التوكن لخدمات النماذج؛ افتح Hugging Face في تبويب آخر وتحقق من الاتصال.";
+    status.textContent = "فشل التحقق: " + friendly;
+    setStatus("تعذر التحقق من التوكن", friendly, "error");
+  } finally {
+    input.value = "";
+    if (button) button.disabled = false;
+  }
+}
+async function testConnectionSafeV5() {
+  const button = $("testHFConnection");
+  const status = $("hfTokenStatus");
+  const token = currentTokenForCheckV5();
+  removeStoredHFTokenV5();
+  if (button) button.disabled = true;
+  status.textContent = "بدأ اختبار الاتصال… لن يُرسل التوكن لخدمة الصوت أو لأي Space عامة.";
+  setStatus("جاري اختبار الاتصال", "يتم التحقق من التوكن (إن أُدخل) ثم اختبار واجهة الصوت دون مشاركة السر مع النموذج.");
+  try {
+    let accountMessage = "لم يُدخل توكن؛ يجري اختبار الاتصال العام فقط. ";
+    if (token) {
+      if (!/^hf_[A-Za-z0-9]+$/.test(token)) throw new Error("صيغة التوكن غير صحيحة. لم يتم إرساله لخدمة الصوت.");
+      const info = await verifyHFTokenWithOfficialAPIv5(token);
+      accountMessage = "التوكن صالح لحساب " + ((info && (info.name || info.username)) || "Hugging Face") + ". ";
+    }
+    const lib = await loadGradioClientModule();
+    await withModelTimeout(lib.Client.connect(ORIGIN[VOICE_SPACE]), 30000, "الاتصال بواجهة نموذج الصوت");
+    status.textContent = accountMessage + "تم الاتصال بواجهة الصوت. قد تظل حصة ZeroGPU مستنفدة؛ فحص البيانات الوصفية لا يختبر حصة التوليد نفسها.";
+    setStatus("نجح اختبار اتصال الواجهة ✓", accountMessage + "واجهة الصوت تستجيب، لكن قد تحتاج لانتظار تجدد الحصة إذا ظهر حد ZeroGPU.", "success");
+  } catch (err) {
+    const raw = String((err && err.message) || err || "خطأ غير معروف");
+    let friendly = raw;
+    if (err && err.name === "AbortError") friendly = "انتهت مهلة التحقق. تحقق من الإنترنت ثم أعد المحاولة.";
+    else if (/Failed to fetch|NetworkError|Load failed/i.test(raw)) friendly = "تعذر الاتصال بسبب الشبكة أو قيود المتصفح. لم يتم تمرير التوكن إلى Space عامة.";
+    status.textContent = "فشل الاختبار: " + friendly;
+    setStatus("فشل اختبار الاتصال", friendly, "error");
+  } finally {
+    $("hfTokenInput").value = "";
+    if (button) button.disabled = false;
+  }
+}
+async function clearTokenSafeV5() {
+  removeStoredHFTokenV5();
+  $("hfTokenInput").value = "";
+  $("hfTokenStatus").textContent = "تم مسح أي توكن قديم محفوظ في هذا المتصفح.";
+  setStatus("تم مسح التوكن القديم", "أدخل توكن جديدًا عند الحاجة، ولا ترسله لأي مساحة نموذج عامة.", "success");
+}
+async function initV5() {
+  removeStoredHFTokenV5();
+  await initV3();
+  $("hfTokenStatus").textContent = "أدخل التوكن (إن أردت) ثم اختر «تحقق من التوكن بأمان». لن يُحفظ ولن يُرسل لمساحات النماذج العامة.";
+  bindFreshClickV5("saveHFToken", verifyOnlyV5);
+  bindFreshClickV5("testHFConnection", testConnectionSafeV5);
+  bindFreshClickV5("clearHFToken", clearTokenSafeV5);
+  setBusy(false);
+}
 getVoiceClient = getVoiceClientV3;
 getImageClient = getImageClientV3;
 getVideoClient = getVideoClientV3;
 errorText = errorTextV3;
 buildScenePlan = buildScenePlanV3;
-init = initV3;
-const previousInitV3 = init;
-init = async function() {
-  await previousInitV3();
-  if ($("testHFConnection")) $("testHFConnection").addEventListener("click", testHFConnectionV4);
-};
 init = initV5;
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
 else init();
