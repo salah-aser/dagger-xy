@@ -1040,3 +1040,235 @@ runFullWorkflow = runFullWorkflowV2;
 init = initV2;
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
 else init();
+
+
+/* Quota-aware connection and narration chunks aligned to natural Arabic punctuation. */
+const HF_TOKEN_KEY_V3 = "salah-web-hf-access-token-v1";
+function getHFTokenOptionsV3() {
+  let token = "";
+  try { token = localStorage.getItem(HF_TOKEN_KEY_V3) || ""; } catch (_) {}
+  return token.startsWith("hf_") ? { token: token } : {};
+}
+function getVoiceClientV3() {
+  if (!voiceClientPromise) voiceClientPromise = loadGradioClientModule().then(function(lib) {
+    return lib.Client.connect(ORIGIN[VOICE_SPACE], getHFTokenOptionsV3());
+  });
+  return voiceClientPromise;
+}
+function getImageClientV3() {
+  if (!imageClientPromise) imageClientPromise = loadGradioClientModule().then(function(lib) {
+    return lib.Client.connect(ORIGIN[IMAGE_SPACE], getHFTokenOptionsV3());
+  });
+  return imageClientPromise;
+}
+function getVideoClientV3() {
+  if (!videoClientPromise) videoClientPromise = loadGradioClientModule().then(function(lib) {
+    return lib.Client.connect(ORIGIN[VIDEO_SPACE], getHFTokenOptionsV3());
+  });
+  return videoClientPromise;
+}
+function errorTextV3(err) {
+  const raw = String((err && err.message) || err || "خطأ غير معروف");
+  if (/ZeroGPU.*(runs limit|quota|exceeded)|exceeded your ZeroGPU runs limit/i.test(raw)) {
+    return "حصة Hugging Face المجانية وصلت للحد. افتح إعداد «تسجيل Hugging Face» وأضف Access Token بصلاحية القراءة، ثم أعد المحاولة. إذا استخدمت توكن بالفعل فقد تكون الحصة اليومية لحسابك استُنفدت أيضًا ويجب انتظار إعادة ضبطها. التفاصيل: " + raw.slice(0, 380);
+  }
+  if (/quota|rate limit|429/i.test(raw)) {
+    return "خدمة النموذج وصلت لحد الاستخدام. أضف توكن Hugging Face إن لم يكن محفوظًا، أو انتظر تجدد الحصة. التوكن لا يلغي كل الحدود المجانية. التفاصيل: " + raw.slice(0, 380);
+  }
+  if (/Space metadata could not be loaded/i.test(raw)) {
+    return "لم يمكن قراءة واجهة النموذج. تحقق من اتصال الإنترنت، أو من أن خدمة Hugging Face ما زالت متاحة. لن يستمر الموقع في الانتظار بلا نهاية. التفاصيل: " + raw.slice(0, 380);
+  }
+  return errorText(err);
+}
+function wordCountV3(text) {
+  return String(text || "").trim().split(/\s+/).filter(Boolean).length;
+}
+function splitAtPunctuationV3(text, marks) {
+  const out = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (marks.indexOf(text[i]) !== -1) {
+      const part = text.slice(start, i + 1).trim();
+      if (part) out.push(part);
+      start = i + 1;
+    }
+  }
+  const last = text.slice(start).trim();
+  if (last) out.push(last);
+  return out;
+}
+function makeNarrationUnitsV3(text, maxWords) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  const sentences = splitAtPunctuationV3(normalized, ".!?؟…؛");
+  const units = [];
+  sentences.forEach(function(sentence) {
+    const clauses = splitAtPunctuationV3(sentence, "،,:");
+    clauses.forEach(function(clause) {
+      const words = clause.split(/\s+/).filter(Boolean);
+      if (words.length <= maxWords) {
+        if (clause) units.push(clause);
+        return;
+      }
+      // Split only exceptionally long clauses, preserving every word and all ending punctuation.
+      for (let i = 0; i < words.length; i += maxWords) {
+        units.push(words.slice(i, i + maxWords).join(" "));
+      }
+    });
+  });
+  return units.filter(Boolean);
+}
+function splitLongestUnitV3(units) {
+  let best = -1;
+  let bestCount = 5;
+  for (let i = 0; i < units.length; i++) {
+    const n = wordCountV3(units[i]);
+    if (n > bestCount) { best = i; bestCount = n; }
+  }
+  if (best < 0) return false;
+  const words = units[best].split(/\s+/);
+  const middle = Math.ceil(words.length / 2);
+  const left = words.slice(0, middle).join(" ").replace(/[.!?؟…؛،,:]+$/u, "");
+  const right = words.slice(middle).join(" ");
+  if (!left || !right) return false;
+  units.splice(best, 1, left + "،", right);
+  return true;
+}
+function buildScenePlanV3(text, desiredMinutes) {
+  const wordTotal = wordCountV3(text);
+  const wantedByDuration = Math.max(1, Math.round(Number(desiredMinutes || 2) * 4));
+  const maxByWords = Math.max(1, Math.ceil(wordTotal / 25));
+  // Don't create many empty/tiny narration segments just because the requested runtime is long.
+  const count = Math.min(60, Math.ceil(wordTotal / 5), Math.max(wantedByDuration, maxByWords));
+  const units = makeNarrationUnitsV3(text, 25);
+  while (units.length < count && splitLongestUnitV3(units)) {}
+  const targetCount = Math.min(count, Math.max(1, units.length));
+  const groups = [];
+  let cursor = 0;
+  let remainingWords = wordTotal;
+  for (let i = 0; i < targetCount; i++) {
+    const groupsLeft = targetCount - i;
+    const targetWords = remainingWords / groupsLeft;
+    const group = [];
+    let groupWords = 0;
+    const unitsLeft = units.length - cursor;
+    const takeAtLeast = Math.max(1, unitsLeft - (groupsLeft - 1));
+    while (cursor < units.length && (group.length < takeAtLeast || (groupWords < targetWords && units.length - cursor > groupsLeft - 1))) {
+      const unit = units[cursor++];
+      group.push(unit);
+      groupWords += wordCountV3(unit);
+      if (groupWords >= targetWords && group.length >= takeAtLeast) break;
+    }
+    groups.push(group.join(" ").replace(/\s+/g, " ").trim());
+    remainingWords -= groupWords;
+  }
+  while (cursor < units.length) groups[groups.length - 1] += " " + units[cursor++];
+  return groups.filter(Boolean).map(function(part, i, all) {
+    return {
+      id: i + 1, narration: part, story: part,
+      visual: makeVisualPrompt(part, i, all.length),
+      start: i * 15, end: (i + 1) * 15
+    };
+  });
+}
+function saveHFTokenV3() {
+  const field = $("hfTokenInput");
+  const val = String(field.value || "").trim();
+  const status = $("hfTokenStatus");
+  try {
+    if (val) {
+      if (!/^hf_[A-Za-z0-9]+$/.test(val)) {
+        status.textContent = "شكل التوكن غير صحيح؛ يفترض أن يبدأ بـ hf_. لم يتم حفظ شيء.";
+        return;
+      }
+      localStorage.setItem(HF_TOKEN_KEY_V3, val);
+      field.value = "";
+      status.textContent = "تم حفظ التوكن على هذا الجهاز. لن يُرفع إلى GitHub؛ سيُستخدم عند الاتصال بخدمات Hugging Face فقط.";
+      voiceClientPromise = null; imageClientPromise = null; videoClientPromise = null;
+      setStatus("تم حفظ إعداد الاتصال", "أعد المحاولة الآن. المصادقة قد تزيد الحصة المتاحة، لكن لا تزيل الحدود اليومية بالكامل.", "success");
+    } else {
+      const existing = localStorage.getItem(HF_TOKEN_KEY_V3);
+      status.textContent = existing
+        ? "يوجد توكن محفوظ بالفعل على هذا الجهاز. اكتب توكن جديدًا ثم احفظ لاستبداله، أو اضغط «مسح التوكن»."
+        : "لم يتم إدخال توكن؛ سيجرب الموقع الحصة المتاحة دون مصادقة.";
+    }
+  } catch (e) {
+    status.textContent = "تعذر حفظ التوكن محليًا في هذا المتصفح. " + String(e.message || e);
+  }
+}
+function clearHFTokenV3() {
+  try { localStorage.removeItem(HF_TOKEN_KEY_V3); } catch (_) {}
+  if ($("hfTokenInput")) $("hfTokenInput").value = "";
+  $("hfTokenStatus").textContent = "تم مسح التوكن المحفوظ من هذا الجهاز.";
+  voiceClientPromise = null; imageClientPromise = null; videoClientPromise = null;
+  setStatus("تم مسح التوكن", "سيرجع الموقع لاستخدام الحصة غير المسجلة عند الاتصال بخدمات النماذج.");
+}
+async function initV3() {
+  try {
+    voiceProfile = await dbGet(VOICE_KEY);
+    $("voiceSampleStatus").textContent = voiceProfile && voiceProfile.blob
+      ? "عينة صوت محفوظة بالفعل في هذا المتصفح؛ سيستخدمها الموقع تلقائيًا."
+      : "لا توجد عينة محفوظة؛ سيستخدم الموقع صوتًا عربيًا جاهزًا تلقائيًا.";
+  } catch (_) {
+    $("voiceSampleStatus").textContent = "سيستخدم الموقع صوتًا عربيًا جاهزًا؛ التخزين المحلي غير متاح حاليًا.";
+  }
+  try {
+    const tok = localStorage.getItem(HF_TOKEN_KEY_V3) || "";
+    $("hfTokenStatus").textContent = tok
+      ? "يوجد توكن محفوظ بالفعل على هذا الجهاز. اترك الحقل فارغًا للإبقاء عليه."
+      : "لم يتم حفظ توكن لهذا المتصفح؛ عند نفاد الحصة قد تحتاج إلى واحد.";
+  } catch (_) {
+    $("hfTokenStatus").textContent = "تعذر الوصول للتخزين المحلي.";
+  }
+  try { storySessions = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || "[]"); } catch (_) { storySessions = []; }
+  if (!Array.isArray(storySessions)) storySessions = [];
+  storySessions = storySessions.filter(function(s) { return s && s.id; });
+  storySessions.forEach(function(s) {
+    if (s.status === "running") {
+      s.status = "partial";
+      s.lastTitle = "توقفت جلسة الإنتاج عند إغلاق الصفحة";
+      s.lastDetail = "حُفظ النص ووصف الشخصيات والنتائج المكتملة. الطلبات الخارجية المعلقة لا تستمر تلقائيًا بعد مغادرة الصفحة.";
+    }
+  });
+  let savedId = "";
+  try { savedId = localStorage.getItem(ACTIVE_SESSION_KEY) || ""; } catch (_) {}
+  if (!storySessions.length) createStorySession(readStorySettings());
+  else if (storySessions.some(function(s) { return s.id === savedId; })) activeSessionId = savedId;
+  else activeSessionId = storySessions.slice().sort(function(a,b) { return (b.updatedAt || 0) - (a.updatedAt || 0); })[0].id;
+  const active = activeStorySession();
+  if (active) applyStorySessionToPage(active);
+  renderStoryHistory();
+
+  $("newStoryButton").addEventListener("click",newStorySession);
+  $("storyScript").addEventListener("input",function() {
+    updateEstimate();
+    const s = activeStorySession();
+    const prior = s ? s.title : "";
+    saveCurrentStoryToHistory(false);
+    if (s && prior !== s.title) renderStoryHistory();
+  });
+  $("characterDescription").addEventListener("input",function(){ saveCurrentStoryToHistory(false); });
+  ["durationMinutes","aspectRatio","videoQuality","stylePreset","voiceSpeed","voiceSteps","arabicCharacters","historicClothing","religiousFaces"].forEach(function(id) {
+    $(id).addEventListener("change",function(){ saveCurrentStoryToHistory(true); });
+  });
+  $("saveVoiceSample").addEventListener("click",saveVoiceReference);
+  $("saveHFToken").addEventListener("click",saveHFTokenV3);
+  if ($("clearHFToken")) $("clearHFToken").addEventListener("click",clearHFTokenV3);
+  $("generateFullVideo").addEventListener("click",runFullWorkflow);
+  if (active && active.lastTitle) {
+    // Restore saved story state and completed clip links.
+  } else {
+    setProgress(0,100,"اختر قصة قديمة من السجل أو أنشئ قصة جديدة.");
+  }
+  updateEstimate();
+  setBusy(false);
+}
+
+/* Last-mile overrides used by the published page. */
+getVoiceClient = getVoiceClientV3;
+getImageClient = getImageClientV3;
+getVideoClient = getVideoClientV3;
+errorText = errorTextV3;
+buildScenePlan = buildScenePlanV3;
+init = initV3;
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+else init();
