@@ -46,12 +46,12 @@ The pipeline generates a voice track and text-driven video for each story scene,
 
 The backend does not guess how a model's workflow is wired. This avoids silently submitting invalid workflows and burning GPU time.
 
-1. In ComfyUI, install/download the matching Wan 2.2 text-to-video workflow and models.
-2. Open the workflow, verify it works once inside ComfyUI, then choose Save (API Format) / export the API workflow JSON.
-3. Open the Salah Cloud dashboard, choose that JSON under ComfyUI API workflow, and click Save workflow.
-4. Test a short script first. GET /api/health reports whether ComfyUI and the workflow are available.
+1. Download the Wan 2.2 text-to-video model weights with download_wan22_14b.sh and wait for ComfyUI health.
+2. The official ComfyUI Wan 2.2 text-to-video blueprint is bundled as the default workflow and is expanded to API format automatically.
+3. If you prefer a different workflow, open it in ComfyUI, verify it works, export Save (API Format), and upload the JSON in the dashboard.
+4. Test a short script first. GET /api/health reports whether ComfyUI and the bundled/custom workflow are available.
 
-The server also accepts a classic ComfyUI graph JSON and attempts conversion via the live /object_info schema. An API-format export is preferred, especially for subgraphs.
+The server also accepts a classic ComfyUI graph JSON and attempts conversion via the live /object_info schema. API-format exports are still preferred for custom workflows.
 
 ## HTTPS
 
