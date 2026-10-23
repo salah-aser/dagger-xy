@@ -33,6 +33,7 @@ API_TOKEN = os.getenv("API_TOKEN", "").strip()
 COMFY_TIMEOUT = int(os.getenv("COMFY_TIMEOUT_SECONDS", "1800"))
 AUTH = HTTPBearer(auto_error=False)
 JOB_LOCKS: dict[str, asyncio.Lock] = {}
+ACTIVE_TASKS: dict[str, asyncio.Task] = {}
 
 DATA.mkdir(parents=True, exist_ok=True)
 OUTPUTS.mkdir(parents=True, exist_ok=True)
@@ -404,7 +405,7 @@ def patch_workflow(base: dict[str, Any], prompt: str, req: dict[str, Any], scene
         for key in list(inputs):
             low = key.lower()
             if low in {"seed", "noise_seed"}:
-                inputs[key] = seed_base + scene_num
+                inputs[key] = seed_base
             elif low == "width":
                 inputs[key] = width
             elif low == "height":
@@ -674,6 +675,8 @@ async def create_job(payload: CreateJob):
     job_id = uuid.uuid4().hex[:16]
     title = payload.title.strip() or "قصة " + payload.script.strip().splitlines()[0][:70]
     req = payload.model_dump()
+    if req.get("seed") is None:
+        req["seed"] = secrets.randbelow(2**31 - 1)
     scenes = [
         {"id": i + 1, "text": part, "status": "queued", "progress": 0, "audio_url": None, "video_url": None, "error": ""}
         for i, part in enumerate(parts)
@@ -686,7 +689,7 @@ async def create_job(payload: CreateJob):
              json.dumps(req, ensure_ascii=False), json.dumps(scenes, ensure_ascii=False),
              "", now_iso(), now_iso(), ""),
         )
-    asyncio.create_task(run_job(job_id))
+    ACTIVE_TASKS[job_id] = asyncio.create_task(run_job(job_id))
     return read_job(job_id)
 
 
@@ -696,7 +699,7 @@ async def resume_job(job_id: str):
     if job["status"] == "running":
         raise HTTPException(409, "المشروع قيد التنفيذ بالفعل.")
     update_job(job_id, status="queued", stage="resume", error="")
-    asyncio.create_task(run_job(job_id, resume=True))
+    ACTIVE_TASKS[job_id] = asyncio.create_task(run_job(job_id, resume=True))
     return read_job(job_id)
 
 
