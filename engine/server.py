@@ -31,6 +31,8 @@ CUSTOM_WORKFLOW_PATH = DATA / "workflow_api.json"
 DEFAULT_WORKFLOW_PATH = ROOT / "workflows" / "wan22_t2v_blueprint.json"
 STATIC = ROOT / "static"
 COMFY_URL = os.getenv("COMFYUI_URL", "http://comfyui:8188").rstrip("/")
+CHATTERBOX_URL = os.getenv("CHATTERBOX_URL", "http://chatterbox:8010").rstrip("/")
+CHATTERBOX_INTERNAL_TOKEN = os.getenv("CHATTERBOX_INTERNAL_TOKEN", "").strip()
 API_TOKEN = os.getenv("API_TOKEN", "").strip()
 COMFY_TIMEOUT = int(os.getenv("COMFY_TIMEOUT_SECONDS", "1800"))
 AUTH = HTTPBearer(auto_error=False)
@@ -152,7 +154,7 @@ class CreateJob(BaseModel):
     character_description: str = Field(default="", max_length=2500)
     title: str = Field(default="", max_length=120)
     language: Literal["ar", "ar-EG", "en"] = "ar"
-    voice_provider: Literal["local", "edge"] = "local"
+    voice_provider: Literal["local", "edge", "chatterbox"] = "local"
     target_minutes: float = Field(default=2, ge=0.25, le=20)
     aspect_ratio: Literal["9:16", "16:9", "1:1"] = "9:16"
     width: int = Field(default=480, ge=320, le=1280)
@@ -160,6 +162,7 @@ class CreateJob(BaseModel):
     frames: int = Field(default=81, ge=25, le=241)
     seed: int | None = None
     visual_style: Literal["cinematic", "historical", "horror", "spiritual", "documentary"] = "cinematic"
+    content_category: Literal["islamic_story", "islamic_history", "islamic_education", "general", "horror", "documentary"] = "islamic_story"
     religious_face_rule: bool = True
     arab_characters: bool = True
 
@@ -211,19 +214,31 @@ def make_prompt(scene: str, req: dict[str, Any], index: int, total: int) -> str:
         "spiritual": "Reverent and dignified spiritual atmosphere, solemn framing, warm natural light, respectful composition",
         "documentary": "Photorealistic documentary cinematography, natural light and grounded camera position",
     }
+    category = req.get("content_category", "islamic_story")
     rules = [
         styles.get(req.get("visual_style", "cinematic"), styles["cinematic"]),
         "One continuous scene, one shot, one moment. Never a collage, triptych, storyboard, contact sheet, split screen, comic panels or multiple frames in one image.",
         f"Scene {index + 1} of {total}. Portray only this scene and do not depict other scenes.",
-        "No captions, letters, subtitles, logos, borders or watermarks.",
+        "No captions, letters, subtitles, logos, borders, watermarks, or readable generated text.",
     ]
+    if category in {"islamic_story", "islamic_history", "islamic_education"}:
+        rules.extend([
+            "Category: respectful Islamic Arabic historical storytelling. Use historically plausible pre-modern Arab and Islamic material culture, architecture, textiles, tools and landscapes appropriate to the exact scene; do not add modern objects.",
+            "Story fidelity is mandatory: visualize only the supplied scene action. Do not invent religious facts, Quranic verses, hadith, quotations, names, events, miracles, or attributions that are not explicitly in the script.",
+            "Do not render Quranic verses, hadith, sacred calligraphy, subtitles, or Arabic lettering in the image. Communicate the scene visually without invented text.",
+            "Avoid orientalist fantasy clichés, exaggerated exotic costumes, modern Gulf clothing for ancient scenes, and implausible props. Clothing and architecture must match the described era and location as closely as possible.",
+        ])
+    elif category == "horror":
+        rules.append("Category: serious atmospheric horror. Build dread through composition, shadow and believable physical detail; avoid gratuitous gore and avoid adding supernatural claims not present in the script.")
+    elif category == "documentary":
+        rules.append("Category: grounded documentary visualization. Prefer plausible real-world details and avoid fictionalizing factual material.")
     if req.get("arab_characters"):
-        rules.append("Use Arab characters, plausible Arab features and culturally consistent surroundings when people appear.")
+        rules.append("Use Arab characters, plausible Arab features, modest culturally appropriate clothing, and culturally consistent surroundings when people appear.")
     if req.get("character_description"):
         rules.append("Character continuity reference; keep the described identity, apparent age, skin tone, face, beard, hair and clothing consistent: " + req["character_description"])
     if req.get("religious_face_rule"):
-        rules.append("Respectful Islamic depiction: if a prophet, messenger, or companion is represented, show a dignified sheikh-like figure whose entire face is pure radiant light without facial features.")
-    rules.append("Scene action: " + scene)
+        rules.append("Respectful Islamic depiction: if a prophet, messenger, or companion is represented, show a dignified robed sheikh-like figure whose entire face is replaced by pure radiant white light, without eyes, nose, mouth, silhouette features, or any visible facial detail.")
+    rules.append("Faithful scene action (provided in Arabic; do not change its meaning): " + scene)
     return ". ".join(rules)
 
 
@@ -496,6 +511,29 @@ async def download_comfy_file(ref: dict[str, str], destination: Path) -> None:
 
 
 async def create_voice(text: str, language: str, provider: str, target: Path) -> None:
+    if provider == "chatterbox":
+        headers = {}
+        if CHATTERBOX_INTERNAL_TOKEN:
+            headers["X-Internal-Token"] = CHATTERBOX_INTERNAL_TOKEN
+        payload = {
+            "text": text,
+            "language_id": "en" if language == "en" else "ar",
+            # Conservative defaults suit slower, cinematic narration better than highly exaggerated speech.
+            "exaggeration": 0.45,
+            "cfg_weight": 0.35,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(1200.0, connect=15.0)) as client:
+                response = await client.post(f"{CHATTERBOX_URL}/tts", json=payload, headers=headers)
+            if response.status_code >= 400:
+                raise RuntimeError("محرك Chatterbox رفض الطلب: " + response.text[:500])
+            audio_bytes = response.content
+            if len(audio_bytes) < 1024 or not audio_bytes.startswith(b"RIFF"):
+                raise RuntimeError("محرك Chatterbox لم يُرجع ملف WAV صالحًا.")
+            target.write_bytes(audio_bytes)
+            return
+        except httpx.HTTPError as exc:
+            raise RuntimeError("تعذر الاتصال بمحرك الصوت Chatterbox. تأكد من تشغيل خدمة الصوت داخل Docker Compose.") from exc
     if provider == "edge":
         try:
             import edge_tts
