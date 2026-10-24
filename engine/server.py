@@ -19,7 +19,7 @@ from typing import Any, Literal
 import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
@@ -150,6 +150,12 @@ def require_auth(credentials: HTTPAuthorizationCredentials | None = Depends(AUTH
     supplied = credentials.credentials if credentials else ""
     if not supplied or not secrets.compare_digest(supplied, API_TOKEN):
         raise HTTPException(401, "مطلوب رمز دخول صحيح لسيرفر Salah Cloud.", headers={"WWW-Authenticate": "Bearer"})
+
+
+class VoiceTestRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=1800)
+    language: Literal["ar", "ar-EG", "en"] = "ar"
+    voice_provider: Literal["local", "edge", "chatterbox"] = "chatterbox"
 
 
 class CreateJob(BaseModel):
@@ -766,6 +772,33 @@ async def health():
         "workflow_source": "custom" if CUSTOM_WORKFLOW_PATH.exists() else "bundled_wan22" if DEFAULT_WORKFLOW_PATH.exists() else "missing",
         "gpu_requirement": "Video generation requires a compatible NVIDIA GPU; this API does not create free GPU capacity.",
     }
+
+
+@app.post("/api/voice-test", dependencies=[Depends(require_auth)])
+async def voice_test(payload: VoiceTestRequest):
+    """Synthesize a short voice preview without requiring the video GPU engine."""
+    tests_dir = DATA / "voice-tests"
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    extension = "mp3" if payload.voice_provider == "edge" else "wav"
+    target = tests_dir / f"{uuid.uuid4().hex}.{extension}"
+    try:
+        await create_voice(payload.text.strip(), payload.language, payload.voice_provider, target)
+        if not target.is_file() or target.stat().st_size < 1024:
+            raise RuntimeError("محرك الصوت لم ينتج ملفًا صالحًا.")
+        audio = target.read_bytes()
+        media_type = "audio/mpeg" if extension == "mp3" else "audio/wav"
+        return Response(
+            content=audio,
+            media_type=media_type,
+            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        )
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    finally:
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 @app.get("/api/jobs", dependencies=[Depends(require_auth)])
