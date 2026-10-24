@@ -209,6 +209,51 @@ def split_script(script: str, target_minutes: float) -> list[str]:
     return scenes
 
 
+async def translate_scene_for_video(scene: str, req: dict[str, Any], index: int, total: int) -> str:
+    """Translate only the scene description for an English-first video model."""
+    if not PROMPT_TRANSLATION_ENABLED:
+        return scene
+    category = req.get("content_category", "islamic_story")
+    instructions = (
+        "Translate this Arabic scene description into concise, concrete English visual language. "
+        "Preserve only actions and details explicitly stated in the source. Do not add characters, events, garments, props, religious claims, verses, hadith, or names. "
+        "If a detail is unclear, keep it general rather than guessing. Return only the English description."
+    )
+    if category in {"islamic_story", "islamic_history", "islamic_education"}:
+        instructions += " This is respectful Islamic historical storytelling. Do not add religious details or written sacred text."
+    user_text = (
+        f"Category: {category}. Scene {index + 1} of {total}.\n"
+        f"Recurring character description (context only): {req.get('character_description', '')}\n"
+        f"Arabic source scene:\n{scene}"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=8.0)) as client:
+            response = await client.post(
+                f"{OLLAMA_URL}/api/chat",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "stream": False,
+                    "messages": [
+                        {"role": "system", "content": instructions},
+                        {"role": "user", "content": user_text},
+                    ],
+                    "options": {"temperature": 0.1, "top_p": 0.8},
+                },
+            )
+        if response.status_code >= 400:
+            raise RuntimeError(f"Ollama rejected scene translation (HTTP {response.status_code}).")
+        data = response.json()
+        translated = str((data.get("message") or {}).get("content") or "").strip()
+        if len(translated) < 8:
+            raise RuntimeError("The local scene translator returned an empty description.")
+        return translated[:2000]
+    except httpx.HTTPError as exc:
+        raise RuntimeError(
+            "المترجم العربي المحلي غير متصل. شغّل Ollama واسحب نموذج qwen3:4b، "
+            "أو اجعل PROMPT_TRANSLATION_ENABLED=false في ملف .env."
+        ) from exc
+
+
 def make_prompt(scene: str, req: dict[str, Any], index: int, total: int) -> str:
     styles = {
         "cinematic": "Photorealistic live-action cinema, plausible lighting, natural skin and cloth textures, deliberate camera movement",
@@ -241,7 +286,7 @@ def make_prompt(scene: str, req: dict[str, Any], index: int, total: int) -> str:
         rules.append("Character continuity reference; keep the described identity, apparent age, skin tone, face, beard, hair and clothing consistent: " + req["character_description"])
     if req.get("religious_face_rule"):
         rules.append("Respectful Islamic depiction: if a prophet, messenger, or companion is represented, show a dignified robed sheikh-like figure whose entire face is replaced by pure radiant white light, without eyes, nose, mouth, silhouette features, or any visible facial detail.")
-    rules.append("Faithful scene action (provided in Arabic; do not change its meaning): " + scene)
+    rules.append("Exact action for this shot; depict only the supplied actions and avoid adding any unmentioned events: " + scene)
     return ". ".join(rules)
 
 
@@ -630,7 +675,8 @@ async def run_job(job_id: str, resume: bool = False) -> None:
                 save_scenes(job_id, scenes)
 
                 if not (resume and raw_path.exists() and raw_path.stat().st_size > 1000):
-                    prompt = make_prompt(scene["text"], req, index, total)
+                    visual_scene = await translate_scene_for_video(scene["text"], req, index, total)
+                    prompt = make_prompt(visual_scene, req, index, total)
                     workflow = patch_workflow(base_workflow, prompt, req, index, job_id)
                     prompt_id = await queue_comfy(workflow)
                     scene["comfy_prompt_id"] = prompt_id
