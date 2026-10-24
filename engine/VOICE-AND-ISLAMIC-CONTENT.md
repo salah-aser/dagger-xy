@@ -58,3 +58,30 @@ The bundled Wan 2.2 TI2V-5B weights are Apache-2.0 on the Hugging Face model car
 - Self-hosted weights remove a per-request third-party voice API dependency, but downloading, storage, electricity and compute are not literally cost-free.
 - Free public GPU sessions can expire or be unavailable.
 - No model guarantees perfect Arabic pronunciation, faithful religious interpretation, consistent characters or Grok-level video quality without evaluation and iteration.
+
+
+## Optional offline Arabic scene translator
+
+Wan's prompt support is documented primarily for English and Chinese, so the API can optionally send each Arabic scene to a local Ollama instance running the Qwen3 4B instruct model. The translated prompt is used only for the visual-generation request; the original Arabic story and displayed narration remain unchanged. Qwen3 4B is published under Apache-2.0 on its official model card.
+
+From the `engine` folder:
+
+```bash
+docker compose --profile arabic-brain up -d ollama
+docker compose exec ollama ollama pull qwen3:4b
+```
+
+Then edit the private `.env` file and set:
+
+```env
+PROMPT_TRANSLATION_ENABLED=true
+OLLAMA_MODEL=qwen3:4b
+```
+
+Recreate the API container:
+
+```bash
+docker compose up -d --force-recreate salah-api
+```
+
+The first model pull downloads several gigabytes, and translation can be slow on CPU. Keep the `arabic-brain` profile turned off when you do not need it. The translator is constrained to translate only the scene description; nevertheless, it is not a religious authority and can still mistranslate. Review final scene prompts and religiously sensitive output.
