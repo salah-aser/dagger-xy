@@ -127,4 +127,4 @@ def test_islamic_prompt_adds_religious_fidelity_guardrails():
     assert "Do not render Quranic verses" in prompt
     assert "pure radiant white light" in prompt
     assert "Scene action" not in prompt  # action is labelled as supplied in Arabic instead
-    assert "Faithful scene action" in prompt
+    assert "Exact action for this shot" in prompt
