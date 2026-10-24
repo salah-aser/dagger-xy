@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import hashlib
+import hmac
 import re
 import secrets
 import shutil
@@ -74,20 +76,44 @@ def init_db() -> None:
         db.execute("CREATE INDEX IF NOT EXISTS jobs_updated_idx ON jobs(updated_at DESC)")
 
 
+def signed_media_url(job_id: str, filename: str, ttl_seconds: int = 86400) -> str:
+    safe_name = Path(filename).name
+    expires = int(time.time()) + ttl_seconds
+    payload = f"{job_id}/{safe_name}:{expires}".encode("utf-8")
+    key = (API_TOKEN or "local-development-not-secure").encode("utf-8")
+    signature = hmac.new(key, payload, hashlib.sha256).hexdigest()
+    return f"/media/{job_id}/{safe_name}?expires={expires}&signature={signature}"
+
+
+def present_scene_media(scenes: list[dict[str, Any]], job_id: str) -> list[dict[str, Any]]:
+    results = json.loads(json.dumps(scenes))
+    for scene in results:
+        for field in ("audio_url", "video_url", "raw_video_url"):
+            raw = scene.get(field)
+            if raw:
+                filename = Path(str(raw).split("?")[0]).name
+                scene[field] = signed_media_url(job_id, filename)
+    return results
+
+
 def row_to_job(row: sqlite3.Row) -> dict[str, Any]:
+    job_id = row["id"]
+    final_url = None
+    if row["final_file"]:
+        final_url = signed_media_url(job_id, Path(row["final_file"]).name)
     return {
-        "id": row["id"],
+        "id": job_id,
         "title": row["title"],
         "status": row["status"],
         "progress": row["progress"],
         "stage": row["stage"],
         "script": row["script"],
         "request": json.loads(row["request_json"]),
-        "scenes": json.loads(row["scenes_json"]),
+        "scenes": present_scene_media(json.loads(row["scenes_json"]), job_id),
         "error": row["error"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
-        "final_url": f"/api/files/{row['final_file']}" if row["final_file"] else None,
+        "final_url": final_url,
     }
 
 
@@ -735,6 +761,24 @@ async def workflow_status():
         return {"configured": True, "source": source_name, "nodes": len(normalized), "message": "تم تحميل سير العمل إلى صيغة ComfyUI API."}
     except Exception as exc:
         return {"configured": False, "source": source_name, "message": str(exc)[:800]}
+
+
+@app.get("/media/{job_id}/{filename}")
+async def signed_media(job_id: str, filename: str, expires: int, signature: str):
+    if not re.fullmatch(r"[a-f0-9]{16}", job_id) or Path(filename).name != filename:
+        raise HTTPException(404, "الملف غير موجود.")
+    if expires < int(time.time()) or expires > int(time.time()) + 86400 + 60:
+        raise HTTPException(403, "انتهت صلاحية رابط الملف. حدّث قائمة المشاريع للحصول على رابط جديد.")
+    payload = f"{job_id}/{filename}:{expires}".encode("utf-8")
+    key = (API_TOKEN or "local-development-not-secure").encode("utf-8")
+    expected = hmac.new(key, payload, hashlib.sha256).hexdigest()
+    if not secrets.compare_digest(expected, signature):
+        raise HTTPException(403, "رابط الملف غير صالح.")
+    job_dir = (OUTPUTS / job_id).resolve()
+    target = (job_dir / filename).resolve()
+    if not target.is_relative_to(job_dir) or not target.is_file():
+        raise HTTPException(404, "الملف غير موجود.")
+    return FileResponse(target)
 
 
 @app.get("/api/files/{job_id}/{filename}", dependencies=[Depends(require_auth)])
