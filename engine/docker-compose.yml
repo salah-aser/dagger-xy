@@ -27,6 +27,8 @@ services:
       SALAHDATA: /data
       API_TOKEN: ${API_TOKEN:?Set API_TOKEN in engine/.env before starting}
       TTS_PROVIDER: local
+      CHATTERBOX_URL: http://chatterbox:8010
+      CHATTERBOX_INTERNAL_TOKEN: ${CHATTERBOX_INTERNAL_TOKEN:-}
       COMFY_TIMEOUT_SECONDS: 1800
       CORS_ORIGINS: ${CORS_ORIGINS:-https://salah-aser.github.io,http://localhost:8000,http://127.0.0.1:8000}
     ports:
@@ -36,6 +38,23 @@ services:
     depends_on:
       comfyui:
         condition: service_healthy
+
+  chatterbox:
+    profiles: ["chatterbox"]
+    build:
+      context: ./voice_engine
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      CHATTERBOX_DEVICE: ${CHATTERBOX_DEVICE:-cpu}
+      CHATTERBOX_REFERENCE_AUDIO: /reference/voice.wav
+      CHATTERBOX_INTERNAL_TOKEN: ${CHATTERBOX_INTERNAL_TOKEN:-}
+      HF_HOME: /models/huggingface
+    volumes:
+      - ./voice/reference:/reference:ro
+      - chatterbox_cache:/models
+    expose:
+      - "8010"
 
   caddy:
     image: caddy:2
@@ -55,5 +74,6 @@ services:
 
 volumes:
   salah_data:
+  chatterbox_cache:
   caddy_data:
   caddy_config:
