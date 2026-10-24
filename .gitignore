@@ -1,0 +1,15 @@
+# Cloudflare local development
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.wrangler/
+node_modules/
+
+# Python and private engine data
+__pycache__/
+*.py[cod]
+engine/.env
+engine/data/
+engine/outputs/
+engine/models/
+engine/ComfyUI/output/
