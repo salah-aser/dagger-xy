@@ -88,6 +88,6 @@ This project does not promise Grok-level quality, continuous lip-sync, a private
 See [VOICE-AND-ISLAMIC-CONTENT.md](VOICE-AND-ISLAMIC-CONTENT.md) for the optional Chatterbox Multilingual V3 Arabic TTS service, optional local Qwen3 scene translator, model license notes, and Islamic-category prompt safeguards.
 
 - Add an authorized voice sample as `voice/reference/voice.wav` inside this engine folder to test voice cloning. The uploaded Hady Raie Voice Act ZIP does not include an audio reference or model weights.
-- Start the Chatterbox service with `docker compose --profile chatterbox up -d --build`; select the open-source Chatterbox voice in the dashboard.
+- On a compatible GPU host, start the full stack with `docker compose --profile chatterbox up -d --build`; select the open-source Chatterbox voice in the dashboard. For a voice-only smoke test, start just the service with `docker compose --profile chatterbox up -d --build chatterbox`.
 - Optional local Arabic-to-English visual prompt translation: start Ollama with `docker compose --profile arabic-brain up -d ollama`, pull `qwen3:4b`, and set `PROMPT_TRANSLATION_ENABLED=true` in the private `.env` file.
 - For CPU-only hosts, speech synthesis and scene translation can be slow. Video generation still requires a suitable GPU host; free hosting quotas do not provide unlimited GPU inference.
