@@ -81,3 +81,13 @@ Set the dashboard's API token to the same value as .env's API_TOKEN.
 ## What is not promised
 
 This project does not promise Grok-level quality, continuous lip-sync, a private GPU machine without actually deploying it to a host you control, or unlimited free inference. It provides the application/server code and a self-hostable open-source video engine path; compute availability is still a separate requirement.
+
+
+## Arabic Islamic storytelling and local voice
+
+See [VOICE-AND-ISLAMIC-CONTENT.md](VOICE-AND-ISLAMIC-CONTENT.md) for the optional Chatterbox Multilingual V3 Arabic TTS service, optional local Qwen3 scene translator, model license notes, and Islamic-category prompt safeguards.
+
+- Add an authorized voice sample as `voice/reference/voice.wav` inside this engine folder to test voice cloning. The uploaded Hady Raie Voice Act ZIP does not include an audio reference or model weights.
+- Start the Chatterbox service with `docker compose --profile chatterbox up -d --build`; select the open-source Chatterbox voice in the dashboard.
+- Optional local Arabic-to-English visual prompt translation: start Ollama with `docker compose --profile arabic-brain up -d ollama`, pull `qwen3:4b`, and set `PROMPT_TRANSLATION_ENABLED=true` in the private `.env` file.
+- For CPU-only hosts, speech synthesis and scene translation can be slow. Video generation still requires a suitable GPU host; free hosting quotas do not provide unlimited GPU inference.
