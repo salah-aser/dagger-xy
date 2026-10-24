@@ -16,6 +16,12 @@ From a Linux host with Docker Compose installed, inside this `engine` folder:
 
 ```bash
 docker compose --profile chatterbox up -d --build
+
+For a voice-only smoke test on a machine that cannot run the GPU video service, start just the voice container:
+
+```bash
+docker compose --profile chatterbox up -d --build chatterbox
+```
 ```
 
 This profile includes the normal services as well as Chatterbox. The normal ComfyUI/video engine still requires a compatible NVIDIA GPU and sufficient VRAM. Chatterbox defaults to CPU mode so it can be tested independently on machines without GPU passthrough; CPU speech generation may be slow. On an appropriate NVIDIA Linux host, set `CHATTERBOX_DEVICE=cuda` in `.env` and add `gpus: all` to the `chatterbox` service in the compose file before starting it.
