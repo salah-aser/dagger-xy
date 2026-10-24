@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0b0e15">
-<title>Salah Cloud — محرك الفيديو الخاص</title>
+<title>Salah Web — لوحة التحكم السحابية</title>
 <style>
 :root{color-scheme:dark;--bg:#0b0e15;--panel:#151a26;--line:#30394d;--text:#f5f6fb;--muted:#a4aec4;--gold:#f0c36d;--green:#8ce1ac;--red:#ff9b9b}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 20% 0,#29223b 0,transparent 36%),var(--bg);color:var(--text);font-family:Tahoma,Arial,sans-serif;line-height:1.75}
@@ -23,7 +23,6 @@ progress{width:100%;height:8px;accent-color:var(--gold)}.jobs{display:grid;gap:1
 </head>
 <body>
 <header><div class="logo">S</div><div class="brand">Salah Cloud<small>PRIVATE AI VIDEO ENGINE</small></div></header>
-<div style="max-width:1160px;margin:18px auto 0;padding:13px 18px;border:1px solid #4d4569;border-radius:14px;background:#161323;color:#e3dff5;font:13px/1.8 Tahoma,Arial,sans-serif">هذه واجهة التحكم فقط. توليد الفيديو يحتاج إلى تشغيل محرك Salah Cloud على جهاز/سيرفر Linux مع GPU متوافق وربطه من قسم الاتصال. صفحة GitHub Pages لا تشغّل GPU بنفسها.</div>
 <div class="wrap">
 <aside class="sticky">
 <section class="panel">
@@ -93,7 +92,7 @@ async function secureMediaUrl(path){
   mediaCache.set(path,url);
   return url;
 }
-function store(){try{localStorage.setItem("salah-cloud-base",base());localStorage.setItem("salah-cloud-token",token())}catch(e){}}
+function store(){try{localStorage.setItem("salah-cloud-base",base());sessionStorage.setItem("salah-cloud-token",token())}catch(e){}}
 function setBox(id,title,detail,type){const el=$(id);el.classList.remove("hidden","good","bad");if(type==="good")el.classList.add("good");if(type==="bad")el.classList.add("bad");el.innerHTML="";const h=document.createElement("div");h.className="statusTitle";h.textContent=title;const p=document.createElement("p");p.className="statusText";p.textContent=detail||"";el.append(h,p)}
 async function api(path,options){if(!base())throw new Error("اكتب رابط السيرفر أولًا.");const response=await fetch(base()+path,{...options,headers:headers(options&&options.headers||{})});let data;try{data=await response.json()}catch(e){data={detail:await response.text().catch(()=>response.statusText)}}if(!response.ok)throw new Error(data.detail||data.error||("HTTP "+response.status));return data}
 async function connect(){store();setBox("healthBox","جاري الاتصال…","نفحص الـAPI وComfyUI.");$("healthDetails").replaceChildren();try{const h=await api("/api/health");setBox("healthBox",h.comfyui&&h.comfyui.online?"API وComfyUI متصلان":"API متصل، لكن ComfyUI غير متصل",h.workflow_configured?"سير العمل مضبوط. جاهز لإرسال طلبات جديدة.":"ارفع سير عمل ComfyUI API JSON أولًا.",h.comfyui&&h.comfyui.online?"good":"bad");const rows=[["API",h.api==="online"],["ComfyUI",!!(h.comfyui&&h.comfyui.online)],["Workflow",!!h.workflow_configured]];rows.forEach(([name,on])=>{const d=document.createElement("div");const a=document.createElement("span");a.textContent=name;const b=document.createElement("span");b.innerHTML='<span class="dot '+(on?"on":"off")+'"></span>'+(on?"متاح":"غير جاهز");d.append(a,b);$("healthDetails").appendChild(d)});await refreshJobs()}catch(e){setBox("healthBox","فشل الاتصال",e.message,"bad")}}
