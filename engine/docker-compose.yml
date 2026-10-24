@@ -29,6 +29,9 @@ services:
       TTS_PROVIDER: local
       CHATTERBOX_URL: http://chatterbox:8010
       CHATTERBOX_INTERNAL_TOKEN: ${CHATTERBOX_INTERNAL_TOKEN:-}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:4b}
+      PROMPT_TRANSLATION_ENABLED: ${PROMPT_TRANSLATION_ENABLED:-false}
       COMFY_TIMEOUT_SECONDS: 1800
       CORS_ORIGINS: ${CORS_ORIGINS:-https://salah-aser.github.io,http://localhost:8000,http://127.0.0.1:8000}
     ports:
@@ -56,6 +59,15 @@ services:
     expose:
       - "8010"
 
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["arabic-brain"]
+    restart: unless-stopped
+    volumes:
+      - ollama_cache:/root/.ollama
+    expose:
+      - "11434"
+
   caddy:
     image: caddy:2
     profiles: ["https"]
@@ -75,5 +87,6 @@ services:
 volumes:
   salah_data:
   chatterbox_cache:
+  ollama_cache:
   caddy_data:
   caddy_config:
