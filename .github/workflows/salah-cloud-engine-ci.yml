@@ -29,7 +29,7 @@ jobs:
       - name: Check setup scripts
         run: bash -n engine/setup.sh engine/download_wan22_14b.sh
       - name: Validate Docker Compose YAML
-        run: python -c "import yaml; yaml.safe_load(open('engine/docker-compose.yml', encoding='utf-8'))"
+        run: python -c "import yaml; [yaml.safe_load(open(p, encoding='utf-8')) for p in ('engine/docker-compose.yml', 'engine/docker-compose.voice-test.yml')]"
       - name: Run unit tests
         working-directory: engine
         run: python -m pytest -q
