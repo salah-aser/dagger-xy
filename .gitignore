@@ -13,3 +13,8 @@ engine/data/
 engine/outputs/
 engine/models/
 engine/ComfyUI/output/
+engine/voice/reference/voice.wav
+engine/voice/reference/*.mp3
+engine/voice/reference/*.wav
+engine/voice/reference/*.flac
+engine/voice/cache/
