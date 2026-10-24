@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from server import split_script, graph_to_api, patch_workflow
+from server import split_script, graph_to_api, patch_workflow, make_prompt
 
 
 def test_split_script_preserves_all_words_in_order():
@@ -111,3 +111,20 @@ def test_official_wan22_blueprint_expands_to_api_prompt_and_saves_video():
     updated = patch_workflow(workflow, "new cinematic Arabic prompt", req, 2, "job123")
     assert updated["89"]["inputs"]["text"] == "new cinematic Arabic prompt"
     assert updated[saver_id]["inputs"]["filename_prefix"].endswith("scene-003")
+
+
+
+def test_islamic_prompt_adds_religious_fidelity_guardrails():
+    req = {
+        "visual_style": "spiritual",
+        "content_category": "islamic_story",
+        "character_description": "elderly Arab man in historically plausible robe",
+        "religious_face_rule": True,
+        "arab_characters": True,
+    }
+    prompt = make_prompt("سار الرجل إلى القرية القديمة.", req, 0, 3)
+    assert "Do not invent religious facts" in prompt
+    assert "Do not render Quranic verses" in prompt
+    assert "pure radiant white light" in prompt
+    assert "Scene action" not in prompt  # action is labelled as supplied in Arabic instead
+    assert "Faithful scene action" in prompt
