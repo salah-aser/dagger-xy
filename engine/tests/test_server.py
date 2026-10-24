@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from server import split_script, graph_to_api, patch_workflow, make_prompt
+from server import split_script, graph_to_api, patch_workflow, make_prompt, VoiceTestRequest
 
 
 def test_split_script_preserves_all_words_in_order():
@@ -128,3 +128,13 @@ def test_islamic_prompt_adds_religious_fidelity_guardrails():
     assert "pure radiant white light" in prompt
     assert "Scene action" not in prompt  # action is labelled as supplied in Arabic instead
     assert "Exact action for this shot" in prompt
+
+
+def test_voice_test_request_accepts_open_source_arabic_voice():
+    request = VoiceTestRequest(
+        text="فِي قَدِيمِ الزَّمَانِ، وَقَعَتْ أَحْدَاثٌ غَرِيبَةٌ.",
+        language="ar",
+        voice_provider="chatterbox",
+    )
+    assert request.voice_provider == "chatterbox"
+    assert request.language == "ar"
