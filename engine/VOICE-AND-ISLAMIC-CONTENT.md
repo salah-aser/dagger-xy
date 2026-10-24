@@ -91,3 +91,35 @@ docker compose up -d --force-recreate salah-api
 ```
 
 The first model pull downloads several gigabytes, and translation can be slow on CPU. Keep the `arabic-brain` profile turned off when you do not need it. The translator is constrained to translate only the scene description; nevertheless, it is not a religious authority and can still mistranslate. Review final scene prompts and religiously sensitive output.
+
+## Windows voice-only smoke test
+
+This phase tests only the local Chatterbox speech engine; it does not start ComfyUI or video generation. Use it to confirm Arabic narration and authorized reference-voice conditioning before deploying a GPU video backend.
+
+1. Install Docker Desktop for Windows using the official guide: https://docs.docker.com/desktop/setup/install/windows-install/ . Choose the WSL 2 backend and start Docker Desktop.
+2. Download the latest repository ZIP. Place your authorized reference sample at engine/voice/reference/voice.wav. This file is intentionally excluded from Git.
+3. From PowerShell in the repository root, create a private engine/.env file with two random tokens:
+
+```powershell
+$apiToken = node -e "process.stdout.write(require('crypto').randomBytes(40).toString('base64url'))"
+$voiceToken = node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))"
+@("API_TOKEN=$apiToken", "CHATTERBOX_INTERNAL_TOKEN=$voiceToken", "CHATTERBOX_DEVICE=cpu", "PROMPT_TRANSLATION_ENABLED=false") | Set-Content -Encoding ascii .\engine\.env
+```
+
+4. Start the isolated voice API and TTS service:
+
+```powershell
+docker compose --env-file engine/.env -f engine/docker-compose.voice-test.yml up -d --build
+```
+
+5. Watch the first model download and startup:
+
+```powershell
+docker compose --env-file engine/.env -f engine/docker-compose.voice-test.yml logs -f chatterbox
+```
+
+The first run downloads several gigabytes of image and model data. CPU voice generation may be slow. Keep the reference recording and both tokens private.
+
+To make a temporary website test, run a Cloudflare Quick Tunnel to localhost:8000 and keep its terminal open. Set the Worker secret ENGINE_URL to the current temporary HTTPS tunnel URL and ENGINE_API_TOKEN to the local API_TOKEN value. In the hosted dashboard, enter the separate CLOUD_ACCESS_TOKEN. Quick Tunnel URLs expire/change when the tunnel stops; do not treat them as production hosting. The website's voice preview can work while ComfyUI remains offline, but video generation cannot.
+
+Free GPU access is limited. Kaggle documents a free P100 notebook accelerator but sessions/availability are limited, not an always-on server. The official Wan 2.1 T2V 1.3B page reports about 8.19 GB VRAM, so a GTX 1050 4 GB laptop is below that target. Google Colab's free managed runtime forbids web-service hosting and certain content-generation web UI use. A fully free, permanent, Grok-class video engine cannot be guaranteed.
