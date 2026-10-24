@@ -51,6 +51,14 @@ progress{width:100%;height:8px;accent-color:var(--gold)}.jobs{display:grid;gap:1
 <div class="field"><label for="language">لغة التعليق الصوتي</label><select id="language"><option value="ar">العربية الفصحى</option><option value="ar-EG">المصرية</option><option value="en">الإنجليزية</option></select></div>
 <div class="field"><label for="voiceProvider">محرك الصوت</label><select id="voiceProvider"><option value="local">محلي وخاص — نطق أساسي</option><option value="chatterbox">محلي مفتوح المصدر — Chatterbox عربي</option><option value="edge">سحابي — جودة أفضل مع إرسال النص للمزود</option></select></div>
 </div>
+<div class="field">
+<label for="voiceTestText">تجربة الإلقاء قبل إنشاء الفيديو</label>
+<textarea id="voiceTestText" rows="3" style="min-height:85px" placeholder="اكتب جملة قصيرة لتجربة الصوت...">فِي قَدِيمِ الزَّمَانِ، وَفِي أَرْضٍ بَعِيدَةٍ، وَقَعَتْ أَحْدَاثٌ غَرِيبَةٌ غَيَّرَتْ مَصِيرَ أَهْلِهَا.</textarea>
+<button class="btn darkbtn full" id="voiceTestBtn" type="button">تجربة الصوت العربي</button>
+<div id="voiceTestStatus" class="status hidden"></div>
+<audio id="voicePreviewAudio" class="hidden" controls style="width:100%;margin-top:10px"></audio>
+<p class="small">يمكنك اختبار الصوت المحلي دون تشغيل محرك الفيديو. يحتاج ذلك إلى تشغيل خدمة الصوت على جهاز أو سيرفر تملكه.</p>
+</div>
 <div class="row">
 <div class="field"><label for="duration">المدة المستهدفة (دقيقة)</label><input id="duration" type="number" min=".25" max="20" step=".25" value="2"></div>
 <div class="field"><label for="aspect">مقاس الفيديو</label><select id="aspect"><option value="9:16">9:16 — Shorts</option><option value="16:9">16:9 — أفقي</option><option value="1:1">1:1 — مربع</option></select></div>
@@ -103,9 +111,43 @@ function esc(value){return String(value==null?"":value).replace(/[&<>"]/g,c=>({"
 function jobCard(job){const card=document.createElement("article");card.className="job";const header=document.createElement("div");header.className="jobhead";const title=document.createElement("strong");title.textContent=job.title||job.id;const badge=document.createElement("span");badge.className="badge";badge.textContent=(job.status||"").toUpperCase()+" · "+(job.progress||0)+"%";header.append(title,badge);card.appendChild(header);const info=document.createElement("p");info.className="small";info.textContent=(job.stage||"")+(job.error?" — "+job.error:"");card.appendChild(info);const progress=document.createElement("progress");progress.max=100;progress.value=job.progress||0;card.appendChild(progress);if(job.final_url){const a=document.createElement("a");a.className="download";a.href="#";a.textContent="تنزيل الفيديو الكامل MP4";a.addEventListener("click",async e=>{e.preventDefault();a.textContent="جاري تنزيل الملف…";try{const url=await secureMediaUrl(job.final_url);const link=document.createElement("a");link.href=url;link.download="Salah-Web-Story.mp4";document.body.appendChild(link);link.click();link.remove();a.textContent="تنزيل الفيديو الكامل MP4"}catch(err){alert(err.message);a.textContent="تنزيل الفيديو الكامل MP4"}});card.appendChild(a)}if(job.status==="failed"||job.status==="partial"){const b=document.createElement("button");b.className="btn darkbtn full";b.textContent="استكمال المشروع";b.addEventListener("click",async()=>{try{await api("/api/jobs/"+job.id+"/resume",{method:"POST"});await refreshJobs()}catch(e){alert(e.message)}});card.appendChild(b)}
 const scenes=document.createElement("div");scenes.className="scenes";(job.scenes||[]).forEach(scene=>{const c=document.createElement("div");c.className="scene";const h=document.createElement("h3");h.textContent="المشهد "+scene.id+" — "+scene.status;c.appendChild(h);const p=document.createElement("p");p.textContent=(scene.text||"").slice(0,250);c.appendChild(p);if(scene.video_url){const loadVideo=document.createElement("button");loadVideo.className="btn darkbtn";loadVideo.textContent="تحميل معاينة الفيديو";loadVideo.addEventListener("click",async()=>{loadVideo.disabled=true;loadVideo.textContent="جاري التحميل…";try{const v=document.createElement("video");v.controls=true;v.playsInline=true;v.src=await secureMediaUrl(scene.video_url);v.style.width="100%";c.insertBefore(v,loadVideo);loadVideo.remove()}catch(err){loadVideo.disabled=false;loadVideo.textContent="تحميل معاينة الفيديو";alert(err.message)}});c.appendChild(loadVideo)}if(scene.audio_url){const loadAudio=document.createElement("button");loadAudio.className="btn darkbtn";loadAudio.style.marginTop="8px";loadAudio.textContent="تحميل معاينة الصوت";loadAudio.addEventListener("click",async()=>{loadAudio.disabled=true;loadAudio.textContent="جاري التحميل…";try{const au=document.createElement("audio");au.controls=true;au.src=await secureMediaUrl(scene.audio_url);au.style.width="100%";c.insertBefore(au,loadAudio);loadAudio.remove()}catch(err){loadAudio.disabled=false;loadAudio.textContent="تحميل معاينة الصوت";alert(err.message)}});c.appendChild(loadAudio)}if(scene.status==="failed"&&scene.error){const e=document.createElement("p");e.style.color="var(--red)";e.textContent=scene.error;c.appendChild(e)}scenes.appendChild(c)});if(scenes.childElementCount)card.appendChild(scenes);return card}
 async function refreshJobs(){try{const items=await api("/api/jobs");const root=$("jobs");root.replaceChildren();if(!items.length){root.innerHTML='<div class="empty">لا توجد مشاريع حتى الآن.</div>';return}items.forEach(job=>{state.jobs.set(job.id,job);root.appendChild(jobCard(job))})}catch(e){$("jobs").innerHTML='<div class="empty">'+esc(e.message)+'</div>'}}
+async function testVoice(){
+  const text=$("voiceTestText").value.trim();
+  if(!text){setBox("voiceTestStatus","اكتب نصًا قصيرًا","اكتب جملة لتجربة الإلقاء.","bad");return}
+  const button=$("voiceTestBtn");
+  button.disabled=true;
+  button.textContent="جاري توليد العينة…";
+  $("voicePreviewAudio").classList.add("hidden");
+  try{
+    const response=await fetch(base()+"/api/voice-test",{
+      method:"POST",
+      headers:headers({"Content-Type":"application/json"}),
+      body:JSON.stringify({text,language:$("language").value,voice_provider:$("voiceProvider").value})
+    });
+    if(!response.ok){
+      let message="HTTP "+response.status;
+      try{const body=await response.json();message=body.detail||body.error||message}catch(e){}
+      throw new Error(message)
+    }
+    const blob=await response.blob();
+    if(!blob.size)throw new Error("رجع محرك الصوت ملفًا فارغًا.");
+    const audio=$("voicePreviewAudio");
+    if(audio.dataset.objectUrl)URL.revokeObjectURL(audio.dataset.objectUrl);
+    const objectUrl=URL.createObjectURL(blob);
+    audio.src=objectUrl;
+    audio.dataset.objectUrl=objectUrl;
+    audio.classList.remove("hidden");
+    setBox("voiceTestStatus","تم إنشاء العينة الصوتية","اسمع النتيجة ثم عدّل النص أو محرك الصوت إذا احتجت.","good");
+  }catch(e){
+    setBox("voiceTestStatus","تعذّر توليد الصوت",e.message,"bad")
+  }finally{
+    button.disabled=false;
+    button.textContent="تجربة الصوت العربي"
+  }
+}
 async function createJob(){const script=$("script").value.trim();if(script.length<20){setBox("createMessage","السكريبت قصير جدًا","اكتب القصة كاملة أولًا.","bad");return}const payload={title:$("title").value,script,character_description:$("characters").value,language:$("language").value,voice_provider:$("voiceProvider").value,target_minutes:Number($("duration").value||2),aspect_ratio:$("aspect").value,width:Number($("width").value),height:Number($("height").value),frames:Number($("frames").value),visual_style:$("style").value,content_category:$("category").value,religious_face_rule:$("religious").checked,arab_characters:true};$("createJob").disabled=true;try{const job=await api("/api/jobs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});setBox("createMessage","تم إنشاء المشروع","رقم المشروع: "+job.id+" · بدأ السيرفر تجهيز المشاهد.");await refreshJobs();poll()}catch(e){setBox("createMessage","لم يبدأ التوليد",e.message,"bad")}finally{$("createJob").disabled=false}}
 function poll(){if(state.timer)clearInterval(state.timer);state.timer=setInterval(async()=>{const running=[...state.jobs.values()].some(x=>["running","queued"].includes(x.status));try{await refreshJobs();if(!running&&[...state.jobs.values()].length)clearInterval(state.timer)}catch(e){}},4000)}
-$("connectBtn").addEventListener("click",connect);$("uploadWorkflow").addEventListener("click",uploadWorkflow);$("createJob").addEventListener("click",createJob);$("refreshJobs").addEventListener("click",refreshJobs);$("script").addEventListener("input",preview);$("duration").addEventListener("input",preview);$("apiBase").addEventListener("change",store);$("apiToken").addEventListener("change",store);
+$("connectBtn").addEventListener("click",connect);$("uploadWorkflow").addEventListener("click",uploadWorkflow);$("voiceTestBtn").addEventListener("click",testVoice);$("createJob").addEventListener("click",createJob);$("refreshJobs").addEventListener("click",refreshJobs);$("script").addEventListener("input",preview);$("duration").addEventListener("input",preview);$("apiBase").addEventListener("change",store);$("apiToken").addEventListener("change",store);
 try{const remembered=localStorage.getItem("salah-cloud-base")||"";const onGitHubPages=window.location.pathname.indexOf("/dagger-xy")>=0;$("apiBase").value=remembered||(onGitHubPages?"":window.location.origin);$("apiToken").value=sessionStorage.getItem("salah-cloud-token")||""}catch(e){}
 preview();
 if(base())connect();
