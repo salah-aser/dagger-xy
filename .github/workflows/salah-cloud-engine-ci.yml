@@ -24,8 +24,8 @@ jobs:
           cache-dependency-path: engine/requirements.txt
       - name: Install API dependencies
         run: python -m pip install -r engine/requirements.txt pytest
-      - name: Compile server
-        run: python -m py_compile engine/server.py
+      - name: Compile Python services
+        run: python -m py_compile engine/server.py engine/voice_engine/server.py
       - name: Check setup scripts
         run: bash -n engine/setup.sh engine/download_wan22_14b.sh
       - name: Validate Docker Compose YAML
