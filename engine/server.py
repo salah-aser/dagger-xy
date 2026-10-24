@@ -33,6 +33,9 @@ STATIC = ROOT / "static"
 COMFY_URL = os.getenv("COMFYUI_URL", "http://comfyui:8188").rstrip("/")
 CHATTERBOX_URL = os.getenv("CHATTERBOX_URL", "http://chatterbox:8010").rstrip("/")
 CHATTERBOX_INTERNAL_TOKEN = os.getenv("CHATTERBOX_INTERNAL_TOKEN", "").strip()
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b").strip()
+PROMPT_TRANSLATION_ENABLED = os.getenv("PROMPT_TRANSLATION_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 API_TOKEN = os.getenv("API_TOKEN", "").strip()
 COMFY_TIMEOUT = int(os.getenv("COMFY_TIMEOUT_SECONDS", "1800"))
 AUTH = HTTPBearer(auto_error=False)
