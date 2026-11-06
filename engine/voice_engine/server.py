@@ -36,102 +36,194 @@ class SpeechRequest(BaseModel):
 
 _ARABIC_LETTERS = re.compile(r"[\u0621-\u064A\u066E-\u06D3]")
 _ARABIC_MARKS = re.compile(r"[\u064B-\u065F\u0670]")
+_QURANIC_ANNOTATION_MARKS = re.compile(r"[\u06D6-\u06ED]")
+_ALL_ARABIC_MARKS = re.compile(r"[\u064B-\u065F\u0670\u06D6-\u06ED]")
+_LEXICON_PATH = Path(__file__).with_name("arabic_lexicon.json")
+_MAX_DIACRITIZER_CHARS = 1024
+_MAX_SPEECH_CHARS = 180
 
 
 def normalize_arabic_text(text: str) -> str:
-    """Conservative normalization: preserve letters and meaning-bearing hamza forms."""
+    """Normalize spacing and invisible controls without changing Arabic spelling."""
     text = unicodedata.normalize("NFC", text)
-    text = text.replace("\u0640", "")  # tatweel
+    text = text.replace("\u0640", "")
     text = re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069]", "", text)
     text = re.sub(r"[\t\r\f\v ]+", " ", text)
-    text = re.sub(r" *\n+ *", " \n ", text)
-    return re.sub(r" +", " ", text).strip()
+    text = re.sub(r" *\n+ *", "\n", text)
+    return text.strip()
 
 
-def split_speech_text(text: str, max_chars: int = 260) -> list[str]:
-    """Split only between words, preferring sentence boundaries; never cut a word."""
-    sentences = [part.strip() for part in re.split(r"(?<=[.!?؟؛…])\s+|\n+", text) if part.strip()]
+def _strip_arabic_marks(text: str) -> str:
+    return _ALL_ARABIC_MARKS.sub("", text)
+
+
+def _letter_boundary_pattern(phrase: str) -> str:
+    mark = r"[\u064B-\u065F\u0670\u06D6-\u06ED]*"
+    pieces = []
+    for char in phrase:
+        if char.isspace():
+            pieces.append(r"\s+")
+        else:
+            pieces.append(re.escape(char) + mark)
+    arabic_letter = r"\u0621-\u064A\u066E-\u06D3"
+    return r"(?<![" + arabic_letter + r"])" + "".join(pieces) + r"(?![" + arabic_letter + r"])"
+
+
+def apply_arabic_phrase_lexicon(text: str) -> tuple[str, list[str]]:
+    """Apply only exact, curated reading forms; never perform broad spelling substitutions."""
+    try:
+        import json
+        entries = json.loads(_LEXICON_PATH.read_text(encoding="utf-8")).get("entries", [])
+    except FileNotFoundError:
+        logger.warning("Arabic pronunciation lexicon file is missing; continuing without phrase overrides.")
+        return text, []
+    except Exception:
+        logger.exception("Could not read Arabic pronunciation lexicon; continuing without phrase overrides.")
+        return text, []
+
+    applied: list[str] = []
+    for entry in entries:
+        source = str(entry.get("text", "")).strip()
+        spoken = str(entry.get("spoken", "")).strip()
+        if not source or not spoken:
+            continue
+        pattern = re.compile(_letter_boundary_pattern(source))
+        updated, count = pattern.subn(lambda _match, value=spoken: value, text)
+        if count:
+            text = updated
+            applied.append(source)
+    return text, applied
+
+
+def _split_units(text: str, max_chars: int = _MAX_SPEECH_CHARS) -> list[str]:
+    """Split at punctuation/newlines, then at whitespace only; never split a word."""
+    clauses: list[str] = []
+    start = 0
+    for index, char in enumerate(text):
+        if char in "،,؛;:!?؟.…" and (index + 1 == len(text) or text[index + 1].isspace()):
+            part = text[start:index + 1].strip()
+            if part:
+                clauses.append(part)
+            start = index + 1
+        elif char == "\n":
+            part = text[start:index].strip()
+            if part:
+                clauses.append(part)
+            start = index + 1
+    tail = text[start:].strip()
+    if tail:
+        clauses.append(tail)
+
+    pieces: list[str] = []
+    for clause in clauses:
+        remaining = clause
+        while len(remaining) > max_chars:
+            cut = remaining.rfind(" ", 0, max_chars + 1)
+            if cut <= 0:
+                cut = remaining.find(" ", max_chars)
+            if cut <= 0:
+                # An unbroken token is kept intact rather than corrupted.
+                break
+            pieces.append(remaining[:cut].strip())
+            remaining = remaining[cut:].strip()
+        if remaining:
+            pieces.append(remaining)
+
     chunks: list[str] = []
     current = ""
-
-    def split_long_sentence(sentence: str) -> list[str]:
-        words = re.findall(r"\S+(?:\s+|$)", sentence)
-        pieces: list[str] = []
-        buffer = ""
-        for word in words:
-            word = word.strip()
-            if not word:
-                continue
-            if buffer and len(buffer) + 1 + len(word) > max_chars:
-                pieces.append(buffer)
-                buffer = word
-            elif len(word) > max_chars:
-                if buffer:
-                    pieces.append(buffer)
-                    buffer = ""
-                pieces.append(word)
-            else:
-                buffer = (buffer + " " + word).strip()
-        if buffer:
-            pieces.append(buffer)
-        return pieces
-
-    for sentence in sentences or [text.strip()]:
-        if len(sentence) <= max_chars:
-            candidate = (current + " " + sentence).strip()
-            if current and len(candidate) > max_chars:
-                chunks.append(current)
-                current = sentence
-            else:
-                current = candidate
-            continue
-        if current:
+    for piece in pieces:
+        candidate = (current + " " + piece).strip()
+        if current and len(candidate) > max_chars:
             chunks.append(current)
-            current = ""
-        long_parts = split_long_sentence(sentence)
-        if long_parts:
-            chunks.extend(long_parts[:-1])
-            current = long_parts[-1]
-
+            current = piece
+        else:
+            current = candidate
     if current:
         chunks.append(current)
-    return chunks or [text.strip()]
+    return chunks or ([text.strip()] if text.strip() else [])
 
 
-_QURANIC_ANNOTATION_MARKS = re.compile(r"[\u06D6-\u06ED]")
+def split_speech_text(text: str, max_chars: int = _MAX_SPEECH_CHARS) -> list[str]:
+    return _split_units(text, max_chars=max_chars)
 
 
-def _without_arabic_marks(text: str) -> str:
-    # Remove only ordinary Arabic vowel marks for validation. Preserve Quranic
-    # annotation signs and all other combining characters exactly.
-    return _ARABIC_MARKS.sub("", text)
+def _text_units_with_marks(text: str) -> list[tuple[str, str]]:
+    units: list[list[str]] = []
+    for char in text:
+        if unicodedata.category(char).startswith("M") and units:
+            units[-1][1] += char
+        else:
+            units.append([char, ""])
+    return [(base, marks) for base, marks in units]
+
+
+def _merge_original_marks(original: str, predicted: str) -> str:
+    """Keep writer-supplied vowel marks; fill only unmarked letters with model predictions."""
+    original_units = _text_units_with_marks(original)
+    predicted_units = _text_units_with_marks(predicted)
+    if len(original_units) != len(predicted_units):
+        return predicted
+    merged: list[str] = []
+    vowel_marks = set("\u064b\u064c\u064d\u064e\u064f\u0650\u0652\u0653\u0654\u0655\u0670")
+    shadda = "\u0651"
+    for (original_char, original_marks), (predicted_char, predicted_marks) in zip(original_units, predicted_units):
+        if original_char != predicted_char:
+            return predicted
+        supplied_vowels = [mark for mark in original_marks if mark in vowel_marks]
+        supplied_shadda = shadda in original_marks
+        predicted_vowels = [mark for mark in predicted_marks if mark in vowel_marks]
+        predicted_shadda = shadda in predicted_marks
+        annotations = [mark for mark in original_marks if _QURANIC_ANNOTATION_MARKS.fullmatch(mark)]
+        if supplied_vowels:
+            chosen_vowels = supplied_vowels
+        else:
+            chosen_vowels = predicted_vowels
+        chosen_shadda = supplied_shadda or predicted_shadda
+        chosen_marks = (shadda if chosen_shadda else "") + "".join(chosen_vowels) + "".join(annotations)
+        merged.append(original_char + chosen_marks)
+    return "".join(merged)
 
 
 def prepare_arabic_chunk(text: str) -> str:
-    """Apply full-sentence Arabic tashkeel, including partially vocalized input."""
+    """Diacritize an Arabic chunk, while preserving supplied marks and Quranic annotations."""
     if not _ARABIC_LETTERS.search(text):
-        return text
-    # Do not rewrite Quranic annotation signs; keep explicitly marked Quranic
-    # passages unchanged so their source orthography remains under user control.
-    if _QURANIC_ANNOTATION_MARKS.search(text):
-        logger.info("Quranic annotation detected; preserving supplied Arabic text.")
         return text
     try:
         import ichkil
 
-        # Ichkil strips/re-predicts existing harakat and is documented as
-        # idempotent. This also fixes mixed text such as "غيّرت" where one
-        # existing shadda previously caused the *entire sentence* to skip.
-        result = ichkil.diacritize(text)
-        if not result or _without_arabic_marks(result) != _without_arabic_marks(text):
-            logger.warning("Arabic diacritizer output failed character-preservation check; using original text.")
+        # Ichkil has a 1024-character model limit. Speech chunks are capped much lower,
+        # but retain this guard for direct calls and future integrations.
+        if len(_strip_arabic_marks(text)) > _MAX_DIACRITIZER_CHARS:
+            return " ".join(prepare_arabic_chunk(part) for part in _split_units(text, 800))
+        plain = _strip_arabic_marks(text)
+        predicted = ichkil.diacritize(plain)
+        if not predicted or _strip_arabic_marks(predicted) != plain:
+            logger.warning("Arabic diacritizer changed base characters; keeping supplied text unchanged.")
             return text
-        logger.info("Arabic tashkeel applied to an Arabic narration chunk.")
+        result = _merge_original_marks(text, predicted)
+        logger.info("Arabic text prepared with contextual best-effort tashkeel.")
         return result
     except Exception:
-        logger.exception("Arabic diacritization failed; falling back to original Arabic text.")
+        logger.exception("Arabic diacritization failed; falling back to normalized Arabic text.")
         return text
 
+
+def prepare_arabic_text(text: str) -> dict:
+    normalized = normalize_arabic_text(text)
+    lexicon_text, applied_overrides = apply_arabic_phrase_lexicon(normalized)
+    chunks = split_speech_text(lexicon_text)
+    prepared_chunks = [prepare_arabic_chunk(chunk) for chunk in chunks]
+    return {
+        "normalized_text": normalized,
+        "spoken_text": " ".join(prepared_chunks),
+        "chunks": prepared_chunks,
+        "phrase_overrides": applied_overrides,
+        "warnings": [
+            "التشكيل الآلي مساعد وقد يخطئ في الإعراب والسياق.",
+            "راجع الآيات والأحاديث والأسماء قبل إنتاج الصوت.",
+            "لم يتم تصحيح الإملاء أو إعادة صياغة النص؛ احتُفظ بالكلمات كما كُتبت.",
+        ],
+    }
 
 def get_model():
     global MODEL
@@ -155,11 +247,11 @@ def synthesize(payload: SpeechRequest) -> bytes:
     model = get_model()
     text = payload.text.strip()
     if payload.language_id == "ar":
+        prepared = prepare_arabic_text(text)
+        speech_chunks = prepared["chunks"]
+    else:
         text = normalize_arabic_text(text)
         speech_chunks = split_speech_text(text)
-        speech_chunks = [prepare_arabic_chunk(chunk) for chunk in speech_chunks]
-    else:
-        speech_chunks = [text]
 
     kwargs = {
         "language_id": payload.language_id,
@@ -183,9 +275,20 @@ def synthesize(payload: SpeechRequest) -> bytes:
                 waveform = waveform.squeeze(0)
             if waveform.ndim != 2:
                 raise RuntimeError(f"Unexpected TTS waveform shape: {tuple(waveform.shape)}")
+            # Short fades avoid clicks at concatenation boundaries.
+            fade_samples = min(int(model.sr * 0.008), waveform.shape[-1] // 4)
+            if fade_samples > 1:
+                ramp = torch.linspace(0.0, 1.0, fade_samples, dtype=waveform.dtype)
+                waveform[:, :fade_samples] *= ramp
+                waveform[:, -fade_samples:] *= torch.flip(ramp, dims=[0])
             if waveforms:
-                previous_ends_sentence = bool(re.search(r"[.!?؟؛…]$", speech_chunks[index - 1]))
-                pause_seconds = 0.18 if previous_ends_sentence else 0.08
+                previous = speech_chunks[index - 1].rstrip()
+                if re.search(r"[.!?؟…]$", previous):
+                    pause_seconds = 0.30
+                elif re.search(r"[،,؛;:]$", previous):
+                    pause_seconds = 0.16
+                else:
+                    pause_seconds = 0.06
                 silence = torch.zeros(
                     (waveform.shape[0], int(model.sr * pause_seconds)),
                     dtype=waveform.dtype,
@@ -211,9 +314,23 @@ def health() -> dict:
         "model_loaded": MODEL is not None,
         "device": DEVICE,
         "reference_voice_configured": REFERENCE_AUDIO.is_file(),
-        "arabic_fusha_processing": "normalization + best-effort tashkeel for unvocalized text",
-        "long_text_handling": "word-safe chunks joined into one WAV",
+        "arabic_fusha_processing": "conservative normalization + Ichkil tashkeel + preservation of supplied harakat",
+        "arabic_pronunciation_lexicon": _LEXICON_PATH.is_file(),
+        "long_text_handling": "punctuation-aware, word-safe chunks with pauses and edge fades",
     }
+
+
+@app.post("/prepare-text")
+def prepare_text(
+    payload: SpeechRequest,
+    x_internal_token: str = Header(default="", alias="X-Internal-Token"),
+) -> dict:
+    if INTERNAL_TOKEN and not hmac.compare_digest(x_internal_token, INTERNAL_TOKEN):
+        raise HTTPException(status_code=401, detail="Invalid internal voice-engine token.")
+    if payload.language_id != "ar":
+        normalized = normalize_arabic_text(payload.text)
+        return {"normalized_text": normalized, "spoken_text": normalized, "chunks": [normalized], "phrase_overrides": [], "warnings": []}
+    return prepare_arabic_text(payload.text)
 
 
 @app.post("/tts")
