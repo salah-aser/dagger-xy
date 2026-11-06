@@ -48,7 +48,7 @@ progress{width:100%;height:8px;accent-color:var(--gold)}.jobs{display:grid;gap:1
 <div class="field"><label for="script">السكريبت الكامل</label><textarea id="script" placeholder="الصق قصتك كاملة هنا..."></textarea></div>
 <div class="field"><label for="characters">وصف الشخصيات وثبات المظهر</label><textarea id="characters" style="min-height:85px" placeholder="الوصف المشترك للشخصيات والملابس والعمر والسمات الثابتة"></textarea></div>
 <div class="row">
-<div class="field"><label for="language">لغة التعليق الصوتي</label><select id="language"><option value="ar">العربية الفصحى</option><option value="ar-EG">المصرية</option><option value="en">الإنجليزية</option></select></div>
+<div class="field"><label for="language">لغة التعليق الصوتي</label><select id="language"><option value="ar">العربية الفصحى — تشكيل آلي مساعد</option><option value="ar-EG">المصرية</option><option value="en">الإنجليزية</option></select></div>
 <div class="field"><label for="voiceProvider">محرك الصوت</label><select id="voiceProvider"><option value="chatterbox" selected>محلي مفتوح المصدر — Chatterbox عربي</option><option value="local">محلي وخاص — نطق أساسي</option><option value="edge">سحابي — جودة أفضل مع إرسال النص للمزود</option></select></div>
 </div>
 <div class="field">
@@ -57,7 +57,7 @@ progress{width:100%;height:8px;accent-color:var(--gold)}.jobs{display:grid;gap:1
 <button class="btn darkbtn full" id="voiceTestBtn" type="button">تجربة الصوت العربي</button>
 <div id="voiceTestStatus" class="status hidden"></div>
 <audio id="voicePreviewAudio" class="hidden" controls style="width:100%;margin-top:10px"></audio>
-<p class="small">يمكنك اختبار الصوت المحلي دون تشغيل محرك الفيديو. يحتاج ذلك إلى تشغيل خدمة الصوت على جهاز أو سيرفر تملكه.</p>
+<p class="small">وضع الفصحى: تُطبَّع الكتابة العربية ويُضاف التشكيل آليًا للنص غير المشكول قبل النطق. النص المشكول يدويًا يُحافَظ عليه كما هو. اكتب النص بالفصحى أصلًا؛ هذا الإعداد لا يحوّل العامية إلى فصحى. التشكيل الآلي مساعد وقد يحتاج مراجعة بشرية، خصوصًا في الآيات والأحاديث والأسماء.</p><p class="small">النصوص الطويلة تُقسَّم عند حدود الكلمات والجمل ثم تُجمَّع في ملف صوتي واحد لتقليل الانقطاع.</p>
 </div>
 <div class="row">
 <div class="field"><label for="duration">المدة المستهدفة (دقيقة)</label><input id="duration" type="number" min=".25" max="20" step=".25" value="2"></div>
