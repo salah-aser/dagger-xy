@@ -150,7 +150,7 @@ def split_speech_text(text: str, max_chars: int = _MAX_SPEECH_CHARS) -> list[str
 def _text_units_with_marks(text: str) -> list[tuple[str, str]]:
     units: list[list[str]] = []
     for char in text:
-        if unicodedata.category(char).startswith("M") and units:
+        if (unicodedata.category(char).startswith("M") or _QURANIC_ANNOTATION_MARKS.fullmatch(char)) and units:
             units[-1][1] += char
         else:
             units.append([char, ""])
@@ -181,7 +181,7 @@ def _merge_original_marks(original: str, predicted: str) -> str:
         chosen_shadda = supplied_shadda or predicted_shadda
         chosen_marks = (shadda if chosen_shadda else "") + "".join(chosen_vowels) + "".join(annotations)
         merged.append(original_char + chosen_marks)
-    return "".join(merged)
+    return unicodedata.normalize("NFC", "".join(merged))
 
 
 def prepare_arabic_chunk(text: str) -> str:
