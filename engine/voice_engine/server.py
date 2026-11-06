@@ -113,6 +113,7 @@ def prepare_arabic_chunk(text: str) -> str:
         if not result or _without_arabic_marks(result) != _without_arabic_marks(text):
             logger.warning("Arabic diacritizer output failed character-preservation check; using original text.")
             return text
+        logger.info("Arabic tashkeel applied to an unvocalized narration chunk.")
         return result
     except Exception:
         logger.exception("Arabic diacritization failed; falling back to original Arabic text.")
