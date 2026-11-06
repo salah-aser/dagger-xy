@@ -802,6 +802,34 @@ async def voice_test(payload: VoiceTestRequest):
             pass
 
 
+@app.post("/api/voice-prepare", dependencies=[Depends(require_auth)])
+async def voice_prepare(payload: VoiceTestRequest):
+    """Return a reviewable Arabic reading-text preview without loading/generating TTS audio."""
+    if payload.voice_provider != "chatterbox" or payload.language != "ar":
+        return {
+            "normalized_text": re.sub(r"\s+", " ", payload.text).strip(),
+            "spoken_text": re.sub(r"\s+", " ", payload.text).strip(),
+            "chunks": [re.sub(r"\s+", " ", payload.text).strip()],
+            "phrase_overrides": [],
+            "warnings": ["المعاينة الصوتية المتقدمة متاحة حاليًا للعربية الفصحى مع Chatterbox."],
+        }
+    headers = {}
+    if CHATTERBOX_INTERNAL_TOKEN:
+        headers["X-Internal-Token"] = CHATTERBOX_INTERNAL_TOKEN
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
+            response = await client.post(
+                f"{CHATTERBOX_URL}/prepare-text",
+                json={"text": payload.text, "language_id": "ar"},
+                headers=headers,
+            )
+        if response.status_code >= 400:
+            raise HTTPException(503, "تعذرت معاينة النص العربي من محرك الصوت: " + response.text[:300])
+        return response.json()
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, "تعذر الاتصال بمحرك تجهيز النص العربي.") from exc
+
+
 @app.get("/api/jobs", dependencies=[Depends(require_auth)])
 async def list_jobs():
     with get_db() as db:
