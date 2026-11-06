@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir --upgrade pip \
 # that includes multilingual V3 model selection without re-resolving dependencies.
 RUN pip install --no-cache-dir --force-reinstall --no-deps "https://github.com/resemble-ai/chatterbox/archive/ab55923c27757c90cfcc407baa57dc25a7d25217.zip"
 
+# Lightweight MIT Arabic diacritizer (CPU/ONNX); model weights are cached in HF_HOME on first use.
+RUN pip install --no-cache-dir "ichkil==1.0.0"
+
 COPY server.py ./server.py
 EXPOSE 8010
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8010"]
