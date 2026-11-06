@@ -11,8 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir "chatterbox-tts" "fastapi" "uvicorn[standard]" \
-    && pip install --no-cache-dir --no-deps "https://github.com/resemble-ai/chatterbox/archive/ab55923c27757c90cfcc407baa57dc25a7d25217.zip"
+    && pip install --no-cache-dir "chatterbox-tts" "fastapi" "uvicorn[standard]"
+
+# Keep the PyPI dependency layer cached; overlay the upstream source revision
+# that includes multilingual V3 model selection without re-resolving dependencies.
+RUN pip install --no-cache-dir --no-deps "https://github.com/resemble-ai/chatterbox/archive/ab55923c27757c90cfcc407baa57dc25a7d25217.zip"
 
 COPY server.py ./server.py
 EXPOSE 8010
