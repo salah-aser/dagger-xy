@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import io
+import logging
 import os
 import threading
 from pathlib import Path
@@ -21,6 +22,7 @@ MODEL_LOCK = threading.Lock()
 GENERATION_LOCK = threading.Lock()
 
 app = FastAPI(title=APP_NAME, version="1.0.0")
+logger = logging.getLogger("uvicorn.error")
 
 
 class SpeechRequest(BaseModel):
@@ -98,7 +100,8 @@ async def tts(
     try:
         audio = await run_in_threadpool(synthesize, payload)
     except Exception as exc:
-        # Keep infrastructure details and stack traces out of public responses.
+        # Keep details private from HTTP clients, but retain a traceback in local Docker logs.
+        logger.exception("Chatterbox speech synthesis failed")
         message = str(exc)
         if "out of memory" in message.lower():
             raise HTTPException(status_code=503, detail="Voice engine ran out of memory. Try a shorter passage or use a larger machine.") from exc
