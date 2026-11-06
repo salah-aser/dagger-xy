@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "description": "Exact phrase readings for common Islamic narration formulas. Entries are intentionally phrase-level; avoid ambiguous single-word case endings.",
+  "entries": [
+    {
+      "text": "بسم الله الرحمن الرحيم",
+      "spoken": "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ"
+    },
+    {
+      "text": "الحمد لله رب العالمين",
+      "spoken": "الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ"
+    },
+    {
+      "text": "صلى الله عليه وسلم",
+      "spoken": "صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ"
+    },
+    {
+      "text": "رضي الله عنه",
+      "spoken": "رَضِيَ اللَّهُ عَنْهُ"
+    },
+    {
+      "text": "رضي الله عنها",
+      "spoken": "رَضِيَ اللَّهُ عَنْهَا"
+    },
+    {
+      "text": "سبحان الله وبحمده",
+      "spoken": "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ"
+    },
+    {
+      "text": "لا إله إلا الله",
+      "spoken": "لَا إِلَٰهَ إِلَّا اللَّهُ"
+    },
+    {
+      "text": "الله أكبر",
+      "spoken": "اللَّهُ أَكْبَرُ"
+    }
+  ]
+}
