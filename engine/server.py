@@ -574,8 +574,9 @@ async def create_voice(text: str, language: str, provider: str, target: Path) ->
             "language_id": "en" if language == "en" else "ar",
             # Conservative defaults suit slower, cinematic narration better than highly exaggerated speech.
             # Expressive but restrained cinematic narration; tune after listening to a real generated sample.
-            "exaggeration": 0.60,
-            "cfg_weight": 0.30,
+            # Lower exaggeration and a moderate CFG weight favor clear Arabic articulation.
+            "exaggeration": 0.45,
+            "cfg_weight": 0.35,
         }
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(1200.0, connect=15.0)) as client:
