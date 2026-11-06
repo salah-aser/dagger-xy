@@ -98,22 +98,35 @@ def split_speech_text(text: str, max_chars: int = 260) -> list[str]:
     return chunks or [text.strip()]
 
 
+_QURANIC_ANNOTATION_MARKS = re.compile(r"[\u06D6-\u06ED]")
+
+
 def _without_arabic_marks(text: str) -> str:
-    return "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    # Remove only ordinary Arabic vowel marks for validation. Preserve Quranic
+    # annotation signs and all other combining characters exactly.
+    return _ARABIC_MARKS.sub("", text)
 
 
 def prepare_arabic_chunk(text: str) -> str:
-    """Add best-effort tashkeel to unvocalized Arabic while preserving supplied tashkeel."""
-    if not _ARABIC_LETTERS.search(text) or _ARABIC_MARKS.search(text):
+    """Apply full-sentence Arabic tashkeel, including partially vocalized input."""
+    if not _ARABIC_LETTERS.search(text):
+        return text
+    # Do not rewrite Quranic annotation signs; keep explicitly marked Quranic
+    # passages unchanged so their source orthography remains under user control.
+    if _QURANIC_ANNOTATION_MARKS.search(text):
+        logger.info("Quranic annotation detected; preserving supplied Arabic text.")
         return text
     try:
         import ichkil
 
+        # Ichkil strips/re-predicts existing harakat and is documented as
+        # idempotent. This also fixes mixed text such as "غيّرت" where one
+        # existing shadda previously caused the *entire sentence* to skip.
         result = ichkil.diacritize(text)
         if not result or _without_arabic_marks(result) != _without_arabic_marks(text):
             logger.warning("Arabic diacritizer output failed character-preservation check; using original text.")
             return text
-        logger.info("Arabic tashkeel applied to an unvocalized narration chunk.")
+        logger.info("Arabic tashkeel applied to an Arabic narration chunk.")
         return result
     except Exception:
         logger.exception("Arabic diacritization failed; falling back to original Arabic text.")
