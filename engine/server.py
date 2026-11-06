@@ -33,6 +33,10 @@ STATIC = ROOT / "static"
 COMFY_URL = os.getenv("COMFYUI_URL", "http://comfyui:8188").rstrip("/")
 CHATTERBOX_URL = os.getenv("CHATTERBOX_URL", "http://chatterbox:8010").rstrip("/")
 CHATTERBOX_INTERNAL_TOKEN = os.getenv("CHATTERBOX_INTERNAL_TOKEN", "").strip()
+HABIBI_URL = os.getenv("HABIBI_URL", "http://host.docker.internal:7860").rstrip("/")
+HABIBI_REFERENCE_AUDIO = Path(os.getenv("HABIBI_REFERENCE_AUDIO", "/habibi-reference/voice_reference.wav"))
+HABIBI_REFERENCE_TEXT_FILE = Path(os.getenv("HABIBI_REFERENCE_TEXT_FILE", "/habibi-reference/voice_reference.txt"))
+HABIBI_SEED = int(os.getenv("HABIBI_SEED", "26668011"))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b").strip()
 PROMPT_TRANSLATION_ENABLED = os.getenv("PROMPT_TRANSLATION_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -155,7 +159,7 @@ def require_auth(credentials: HTTPAuthorizationCredentials | None = Depends(AUTH
 class VoiceTestRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1800)
     language: Literal["ar", "ar-EG", "en"] = "ar"
-    voice_provider: Literal["local", "edge", "chatterbox"] = "chatterbox"
+    voice_provider: Literal["local", "edge", "chatterbox", "habibi"] = "chatterbox"
 
 
 class CreateJob(BaseModel):
@@ -163,7 +167,7 @@ class CreateJob(BaseModel):
     character_description: str = Field(default="", max_length=2500)
     title: str = Field(default="", max_length=120)
     language: Literal["ar", "ar-EG", "en"] = "ar"
-    voice_provider: Literal["local", "edge", "chatterbox"] = "local"
+    voice_provider: Literal["local", "edge", "chatterbox", "habibi"] = "local"
     target_minutes: float = Field(default=2, ge=0.25, le=20)
     aspect_ratio: Literal["9:16", "16:9", "1:1"] = "9:16"
     width: int = Field(default=480, ge=320, le=1280)
@@ -564,7 +568,91 @@ async def download_comfy_file(ref: dict[str, str], destination: Path) -> None:
         raise RuntimeError("ملف الفيديو الناتج فارغ أو غير مكتمل.")
 
 
+
+def _save_habibi_audio_result(result: Any, target: Path) -> None:
+    """Copy the WAV file returned by the local Habibi Gradio API into the job output."""
+    audio = result[0] if isinstance(result, (list, tuple)) and result else result
+    candidate = None
+    url = None
+    data = None
+
+    if isinstance(audio, dict):
+        candidate = audio.get("path") or audio.get("name")
+        url = audio.get("url")
+        data = audio.get("data")
+    elif isinstance(audio, (str, os.PathLike)):
+        candidate = str(audio)
+
+    if candidate:
+        candidate_text = str(candidate)
+        if candidate_text.startswith(("http://", "https://")):
+            url = candidate_text
+        else:
+            output_path = Path(candidate_text)
+            if output_path.is_file():
+                shutil.copyfile(output_path, target)
+                return
+
+    if url:
+        if str(url).startswith("/"):
+            url = HABIBI_URL + str(url)
+        with httpx.Client(timeout=httpx.Timeout(120.0, connect=15.0), follow_redirects=True) as client:
+            response = client.get(str(url))
+            response.raise_for_status()
+            target.write_bytes(response.content)
+        if target.is_file() and target.stat().st_size >= 1024:
+            return
+
+    if data:
+        import base64
+        encoded = str(data).split(",", 1)[-1]
+        target.write_bytes(base64.b64decode(encoded))
+        if target.is_file() and target.stat().st_size >= 1024:
+            return
+
+    raise RuntimeError("Habibi-TTS لم يُرجع ملف WAV يمكن حفظه.")
+
+
+def _habibi_synthesize_sync(text: str, target: Path) -> None:
+    from gradio_client import Client, handle_file
+
+    if not HABIBI_REFERENCE_AUDIO.is_file():
+        raise RuntimeError(
+            "ملف مرجع Habibi غير موجود. ضع voice_reference.wav داخل engine/voice/habibi-reference."
+        )
+    if not HABIBI_REFERENCE_TEXT_FILE.is_file():
+        raise RuntimeError(
+            "نص مرجع Habibi غير موجود. ضع voice_reference.txt داخل engine/voice/habibi-reference."
+        )
+    reference_text = HABIBI_REFERENCE_TEXT_FILE.read_text(encoding="utf-8").strip()
+    if not reference_text:
+        raise RuntimeError("ملف نص مرجع Habibi فارغ.")
+
+    client = Client(HABIBI_URL, verbose=False)
+    result = client.predict(
+        "MSA (Modern Standard Arabic)",
+        "Specialized",
+        handle_file(str(HABIBI_REFERENCE_AUDIO)),
+        reference_text,
+        text,
+        False,
+        HABIBI_SEED,
+        api_name="/basic_tts",
+    )
+    _save_habibi_audio_result(result, target)
+
+
 async def create_voice(text: str, language: str, provider: str, target: Path) -> None:
+    if provider == "habibi":
+        if language != "ar":
+            raise RuntimeError("Habibi الحالي مضبوط على العربية الفصحى MSA فقط.")
+        try:
+            await asyncio.to_thread(_habibi_synthesize_sync, text, target)
+            if not target.is_file() or target.stat().st_size < 1024:
+                raise RuntimeError("Habibi-TTS أنشأ ملفًا فارغًا أو غير مكتمل.")
+            return
+        except Exception as exc:
+            raise RuntimeError("فشل الاتصال بمحرك Habibi-TTS: " + str(exc)[:400]) from exc
     if provider == "chatterbox":
         headers = {}
         if CHATTERBOX_INTERNAL_TOKEN:
