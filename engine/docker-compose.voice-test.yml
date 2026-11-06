@@ -34,6 +34,10 @@ services:
       TTS_PROVIDER: chatterbox
       CHATTERBOX_URL: http://chatterbox:8010
       CHATTERBOX_INTERNAL_TOKEN: ${CHATTERBOX_INTERNAL_TOKEN:-}
+      HABIBI_URL: ${HABIBI_URL:-http://host.docker.internal:7860}
+      HABIBI_REFERENCE_AUDIO: /habibi-reference/voice_reference.wav
+      HABIBI_REFERENCE_TEXT_FILE: /habibi-reference/voice_reference.txt
+      HABIBI_SEED: ${HABIBI_SEED:-26668011}
       PROMPT_TRANSLATION_ENABLED: "false"
       COMFY_TIMEOUT_SECONDS: 1800
       CORS_ORIGINS: ${CORS_ORIGINS:-https://salah-aser.github.io,http://localhost:8000,http://127.0.0.1:8000}
@@ -41,6 +45,7 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - salah_data:/data
+      - ./voice/habibi-reference:/habibi-reference:ro
 
 volumes:
   salah_data:
