@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "voice_engine"))
+sys.path.insert(0, str(ROOT))
 
-from server import (  # noqa: E402
+from voice_engine.server import (  # noqa: E402
     _merge_original_marks,
     _strip_arabic_marks,
     apply_arabic_phrase_lexicon,
