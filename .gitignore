@@ -18,3 +18,8 @@ engine/voice/reference/*.mp3
 engine/voice/reference/*.wav
 engine/voice/reference/*.flac
 engine/voice/cache/
+
+# Private Habibi voice reference (never commit personal recordings)
+engine/voice/habibi-reference/*.wav
+engine/voice/habibi-reference/*.mp3
+engine/voice/habibi-reference/*.txt
