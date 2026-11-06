@@ -21,5 +21,6 @@ RUN pip install --no-cache-dir --force-reinstall --no-deps "https://github.com/r
 RUN pip install --no-cache-dir "ichkil==1.0.0"
 
 COPY server.py ./server.py
+COPY arabic_lexicon.json ./arabic_lexicon.json
 EXPOSE 8010
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8010"]
