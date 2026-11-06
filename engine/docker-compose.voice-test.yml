@@ -3,6 +3,9 @@
 #   docker compose --env-file engine/.env -f engine/docker-compose.voice-test.yml up -d --build
 services:
   chatterbox:
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     build:
       context: ./voice_engine
       dockerfile: Dockerfile
@@ -15,6 +18,7 @@ services:
     volumes:
       - ./voice/reference:/reference:ro
       - chatterbox_cache:/models
+      - ./cache/pkuseg:/root/.pkuseg
     expose:
       - "8010"
 
